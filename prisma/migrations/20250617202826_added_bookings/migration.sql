@@ -1,0 +1,8 @@
+-- AlterTable
+ALTER TABLE `booking` ADD COLUMN `userEmail` VARCHAR(191) NULL,
+    ADD COLUMN `userName` VARCHAR(191) NULL,
+    ADD COLUMN `userPhone` VARCHAR(191) NULL,
+    ADD COLUMN `venueAddress` VARCHAR(191) NULL,
+    ADD COLUMN `venueState` VARCHAR(191) NULL,
+    ADD COLUMN `venueZip` VARCHAR(191) NULL,
+    MODIFY `userId` INTEGER NULL;

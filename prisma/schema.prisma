@@ -1,0 +1,302 @@
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model Priest {
+  id             Int                 @id @default(autoincrement())
+  name           String
+  specialty      String?
+  photo          String?
+  contactNo      String?
+  email          String?
+  languages      Json          // string[]
+  address        String?
+  qualifications Json               // already a JSON array
+  slots          AvailabilitySlot[]
+  bookings       Booking[]
+  poojas         Pooja[]            @relation("PoojaPriests")
+
+  // optional user reference
+  user           User?
+}
+
+model Pooja {
+  id              Int       @id @default(autoincrement())
+  name            String
+  amount          Float
+
+
+  date            DateTime? // optional date
+  time            DateTime? // optional time
+
+  durationMin     Int
+  prepTimeMin     Int
+  bufferMin       Int
+
+  isInVenue       Boolean
+  isOutsideVenue  Boolean
+
+  venueAddress    String?
+  mapLink         String?
+  allowedZones    Json?     // optional JSON array
+
+  photoUrl        String?
+  includeFood     Boolean   @default(false)
+  includeHall     Boolean   @default(false)
+  materials       String?   @db.VarChar(1000)
+  notes           String?   @db.VarChar(1000)
+  description     String?   @db.Text
+
+  // many-to-many to Priest
+  priests         Priest[]  @relation("PoojaPriests")
+  bookings        Booking[]
+
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+}
+
+enum SlotType {
+  AVAILABLE
+  BUSY
+  HOLIDAY
+}
+
+model AvailabilitySlot {
+  id          Int       @id @default(autoincrement())
+  priest      Priest    @relation(fields: [priestId], references: [id])
+  priestId    Int
+
+  /// For one-off slots (a specific calendar date)
+  date        DateTime?   
+
+  /// Time-of-day range (HH:MM:SS) for both one-offs and recurrings
+  start       DateTime    @db.Time
+  end         DateTime    @db.Time
+
+  /// If you’re doing a weekly recurring slot, list weekdays here
+  daysOfWeek  Json?     @db.Json  
+
+  disabled    Boolean   @default(false)
+  type        SlotType  @default(AVAILABLE)
+
+  @@index([priestId])
+}
+
+model Permission {
+  id          Int               @id @default(autoincrement())
+  name        String            @unique                   // e.g. "bookings.read", "bookings.create"
+  description String?
+  rolePermissions RolePermission[]
+}
+
+ model RolePermission {
+   role         Role       @relation(fields: [roleId], references: [id])
+   roleId       Int
+   permission   Permission @relation(fields: [permissionId], references: [id])
+   permissionId Int
+
+   @@id([roleId, permissionId])
+ }
+
+
+
+model Booking {
+  id            Int       @id @default(autoincrement())
+  userId        Int?
+
+  user          User?     @relation(fields: [userId], references: [id])
+  poojaId       Int
+  priestId      Int
+
+  // the date the user chose
+  bookingDate   DateTime 
+
+  // start/end DateTimes (or use Time-only native types)
+  start         DateTime  
+  end           DateTime  
+
+  status        String    @default("confirmed")
+
+  // ... the rest stays the same
+  userName      String?
+  userEmail     String?
+  userPhone     String?
+  venueAddress  String?
+  venueState    String?
+  venueZip      String?
+
+  pooja         Pooja     @relation(fields: [poojaId], references: [id])
+  priest        Priest    @relation(fields: [priestId], references: [id])
+
+  createdAt     DateTime  @default(now())
+}
+
+model Page {
+  id        String   @id @default(uuid())
+  slug      String   @unique
+  title     String
+  template  String?        // ← now optional
+  content   Json?          // ← now optional
+  meta      Json?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+
+model DonationItem {
+  id         Int       @id @default(autoincrement())
+  name       String
+  amount     Float
+
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  donations  DonationRecord[]
+}
+
+model DonationRecord {
+  id             Int          @id @default(autoincrement())
+  donationItem   DonationItem @relation(fields: [donationItemId], references: [id])
+  donationItemId Int
+
+  donorName      String
+  donorEmail     String
+  donorPhone     String
+
+  createdAt      DateTime     @default(now())
+}
+
+
+model User {
+  id       Int        @id @default(autoincrement())
+  email    String     @unique
+  password String
+  roles    UserRole[] 
+
+  // ← add this if you want to link a User to a Priest account
+  priest        Priest?                 @relation(fields: [priestId], references: [id])
+  priestId      Int?                    @unique
+
+  // bookings made by this user
+  eventBookings EventBooking[]          
+  sponsorshipBookings SponsorshipBooking[]
+
+  poojaBookings       Booking[]
+}
+
+
+ model Role {
+   id    Int        @id @default(autoincrement())
+   name  String     @unique
+   users          UserRole[]
+   rolePermissions RolePermission[]
+ }
+
+
+model UserRole {
+  user   User @relation(fields: [userId], references: [id])
+  userId Int
+  role   Role @relation(fields: [roleId], references: [id])
+  roleId Int
+
+  @@id([userId, roleId])
+}
+
+
+model Event {
+  id           Int               @id @default(autoincrement())
+  name         String
+  description  String?           @db.VarChar(1000)
+  imageUrl     String?           // cover image for the event
+  venue        String
+  mapLink      String?           // e.g. Google Maps URL
+  date         DateTime          // when the event starts
+  endDate      DateTime?         // if it spans multiple days
+  startTime    DateTime?         // separate start time on the same day
+  endTime      DateTime?         // separate end time on the same day
+  tags         Json?             // store array of strings as JSON
+  capacity     Int?              // maximum number of attendees
+  price        Float?            // ticket price
+ 
+  organizer    String?           // name of the host
+  contactInfo  String?           // email/phone for questions
+  isPublic     Boolean           @default(true)
+  createdAt    DateTime          @default(now())
+  updatedAt    DateTime          @updatedAt
+
+  bookings     EventBooking[]
+  sponsorships EventSponsorship[] 
+}
+
+model EventBooking {
+  id         Int      @id @default(autoincrement())
+  event      Event    @relation(fields: [eventId], references: [id])
+  eventId    Int
+
+  // no longer required
+  user       User?    @relation(fields: [userId], references: [id])
+  userId     Int?     
+
+  pax        Int      @default(1)
+  status     String   @default("confirmed")
+  bookedAt   DateTime @default(now())
+
+  // always store these for a guest
+  userName   String?
+  userEmail  String?
+  userPhone  String?
+}
+
+model SponsorshipType {
+  id          Int                @id @default(autoincrement())
+  name        String             @unique
+  description String?
+  createdAt   DateTime           @default(now())
+  price       Float 
+  eventSponsorships EventSponsorship[]
+}
+
+model EventSponsorship {
+  id                Int                @id @default(autoincrement())
+  event             Event              @relation(fields: [eventId], references: [id])
+  eventId           Int
+
+  sponsorshipType   SponsorshipType    @relation(fields: [sponsorshipTypeId], references: [id])
+  sponsorshipTypeId Int
+
+  price             Float
+  maxSlots          Int                @default(1)
+
+  bookings          SponsorshipBooking[]
+
+  @@unique([eventId, sponsorshipTypeId]) // prevent duplicate sponsorship type in the same event
+}
+
+model SponsorshipBooking {
+  id                  Int                @id @default(autoincrement())
+  user                User?              @relation(fields: [userId], references: [id])
+  userId              Int?
+
+  eventSponsorship    EventSponsorship   @relation(fields: [eventSponsorshipId], references: [id])
+  eventSponsorshipId  Int
+
+  status              String             @default("pending") // pending, confirmed, failed
+  sponsorName         String
+  sponsorEmail        String
+  sponsorPhone        String
+  sponsorLogo         String?
+
+  bookedAt            DateTime           @default(now())
+}
+
+model Settings {
+  id       Int     @id @default(1) // always only one row
+  currency String  @default("INR")
+  // You can add more global settings here later (e.g. timezone, language, tax rates, etc.)
+}
+

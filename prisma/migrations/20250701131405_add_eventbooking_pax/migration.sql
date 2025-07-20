@@ -1,0 +1,5 @@
+-- AlterTable
+ALTER TABLE `eventbooking` ADD COLUMN `pax` INTEGER NOT NULL DEFAULT 1,
+    ADD COLUMN `userEmail` VARCHAR(191) NULL,
+    ADD COLUMN `userName` VARCHAR(191) NULL,
+    ADD COLUMN `userPhone` VARCHAR(191) NULL;

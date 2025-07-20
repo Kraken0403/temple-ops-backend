@@ -1,0 +1,2 @@
+-- AlterTable
+ALTER TABLE `availabilityslot` ADD COLUMN `type` ENUM('AVAILABLE', 'BUSY', 'HOLIDAY') NOT NULL DEFAULT 'AVAILABLE';
