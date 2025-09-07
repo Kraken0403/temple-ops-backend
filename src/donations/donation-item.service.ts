@@ -1,5 +1,5 @@
 // src/donations/donation-item.service.ts
-import { Injectable } from '@nestjs/common'
+import { Injectable, BadRequestException } from '@nestjs/common'
 import { PrismaService } from '../prisma.service'
 import { CreateDonationItemDto } from './dto/create-donation-item.dto'
 import { UpdateDonationItemDto } from './dto/update-donation-item.dto'
@@ -13,7 +13,9 @@ export class DonationItemService {
   }
 
   findAll() {
-    return this.prisma.donationItem.findMany()
+    return this.prisma.donationItem.findMany({
+      orderBy: { updatedAt: 'desc' }
+    })
   }
 
   findOne(id: number) {
@@ -27,7 +29,21 @@ export class DonationItemService {
     })
   }
 
-  remove(id: number) {
+  async remove(id: number) {
+    const count = await this.prisma.donationRecord.count({
+      where: { donationItemId: id }
+    })
+    if (count > 0) {
+      // Choose your policy:
+      // 1) Block delete:
+      throw new BadRequestException(
+        'Cannot delete: donation records exist for this item'
+      )
+
+      // 2) Or cascade delete (dangerous, uncomment if you want):
+      // await this.prisma.donationRecord.deleteMany({ where: { donationItemId: id } })
+    }
+
     return this.prisma.donationItem.delete({ where: { id } })
   }
 }

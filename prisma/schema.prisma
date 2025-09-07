@@ -7,6 +7,52 @@ generator client {
   provider = "prisma-client-js"
 }
 
+model MediaAsset {
+  id              Int        @id @default(autoincrement())
+  url             String     @unique
+  filename        String
+  mimeType        String?
+  sizeBytes       Int?
+  width           Int?
+  height          Int?
+  uploadedBy      Int?
+  createdAt       DateTime   @default(now())
+
+  // back-relations
+  albumItems      AlbumItem[]
+  coverForAlbums  Album[]    @relation("AlbumCover") // <-- opposite side for Album.cover
+}
+
+model Album {
+  id          Int          @id @default(autoincrement())
+  title       String
+  slug        String       @unique
+  description String?      @db.VarChar(1000)
+
+  coverId     Int?
+  cover       MediaAsset?  @relation("AlbumCover", fields: [coverId], references: [id], onDelete: SetNull) // <-- optional
+
+  isPublic    Boolean      @default(true)
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+  items       AlbumItem[]
+}
+
+model AlbumItem {
+  id        Int        @id @default(autoincrement())
+  album     Album      @relation(fields: [albumId], references: [id], onDelete: Cascade)
+  albumId   Int
+  media     MediaAsset @relation(fields: [mediaId], references: [id], onDelete: Cascade)
+  mediaId   Int
+  caption   String?    @db.VarChar(1000)
+  sortOrder Int        @default(0)
+
+  @@index([albumId])
+  @@index([mediaId])
+}
+
+
+
 model Priest {
   id             Int                 @id @default(autoincrement())
   name           String
@@ -58,6 +104,8 @@ model Pooja {
 
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
+
+  deletedAt       DateTime?
 }
 
 enum SlotType {
@@ -108,21 +156,26 @@ model Permission {
 model Booking {
   id            Int       @id @default(autoincrement())
   userId        Int?
-
   user          User?     @relation(fields: [userId], references: [id])
+
   poojaId       Int
   priestId      Int
+  pooja         Pooja     @relation(fields: [poojaId], references: [id])
+  priest        Priest    @relation(fields: [priestId], references: [id])
 
-  // the date the user chose
-  bookingDate   DateTime 
-
-  // start/end DateTimes (or use Time-only native types)
-  start         DateTime  
-  end           DateTime  
+  // user-chosen date/time
+  bookingDate   DateTime
+  start         DateTime
+  end           DateTime
 
   status        String    @default("confirmed")
 
-  // ... the rest stays the same
+  // 🔒 immutable snapshots (do NOT depend on live pooja/priest)
+  amountAtBooking     Float
+  poojaNameAtBooking  String
+  priestNameAtBooking String?
+
+  // guest details / venue
   userName      String?
   userEmail     String?
   userPhone     String?
@@ -130,33 +183,28 @@ model Booking {
   venueState    String?
   venueZip      String?
 
-  pooja         Pooja     @relation(fields: [poojaId], references: [id])
-  priest        Priest    @relation(fields: [priestId], references: [id])
-
   createdAt     DateTime  @default(now())
 }
 
-model Page {
-  id        String   @id @default(uuid())
-  slug      String   @unique
-  title     String
-  template  String?        // ← now optional
-  content   Json?          // ← now optional
-  meta      Json?
-  createdAt DateTime @default(now())
+
+model StaticPage {
+  id        Int      @id @default(autoincrement())
+  slug      String   @unique  // e.g., "home", "about", "gallery", "bhajans"
+  template  String   // e.g., "home", "about", etc.
+  content   Json     // structured JSON matching frontend needs
   updatedAt DateTime @updatedAt
 }
 
 
 model DonationItem {
-  id         Int       @id @default(autoincrement())
-  name       String
-  amount     Float
+  id        Int       @id @default(autoincrement())
+  name      String
+  amount    Float
 
-  createdAt  DateTime  @default(now())
-  updatedAt  DateTime  @updatedAt
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
 
-  donations  DonationRecord[]
+  donations DonationRecord[]
 }
 
 model DonationRecord {
@@ -168,8 +216,13 @@ model DonationRecord {
   donorEmail     String
   donorPhone     String
 
-  createdAt      DateTime     @default(now())
+  // 🔹 Snapshot fields
+  itemNameAtDonation String
+  amountAtDonation   Float
+
+  createdAt DateTime @default(now())
 }
+
 
 
 model User {

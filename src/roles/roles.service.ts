@@ -1,4 +1,5 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+// src/roles/roles.service.ts
+import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma.service';
 import { CreateRoleDto } from './dto/create-role.dto';
 import { UpdateRoleDto } from './dto/update-role.dto';
@@ -20,17 +21,23 @@ export class RolesService {
   }
 
   async update(id: number, dto: UpdateRoleDto) {
-    await this.ensureExists(id);
+    const existing = await this.prisma.role.findUnique({ where: { id } });
+    if (!existing) throw new NotFoundException(`Role ${id} not found`);
+
+    // block renaming the admin role or renaming *to* admin
+    if (existing.name.toLowerCase() === 'admin') {
+      throw new BadRequestException('The "admin" role cannot be renamed.');
+    }
+    if (dto.name && dto.name.toLowerCase() === 'admin') {
+      throw new BadRequestException('Cannot rename a role to "admin".');
+    }
+
     return this.prisma.role.update({ where: { id }, data: dto });
   }
 
   async remove(id: number) {
-    await this.ensureExists(id);
-    return this.prisma.role.delete({ where: { id } });
-  }
-
-  private async ensureExists(id: number) {
     const r = await this.prisma.role.findUnique({ where: { id } });
     if (!r) throw new NotFoundException(`Role ${id} not found`);
+    return this.prisma.role.delete({ where: { id } });
   }
 }

@@ -4,6 +4,7 @@ import {
   Get,
   Post,
   Patch,
+  Delete,
   Body,
   Param,
   UseInterceptors,
@@ -50,5 +51,13 @@ export class PoojaController {
     @Body() dto: UpdatePoojaDto
   ) {
     return this.svc.updateFromJson(id, dto);
+  }
+
+  /** Delete a pooja
+   * - Will REFUSE if any bookings exist (to avoid affecting records)
+   */
+  @Delete(':id')
+  remove(@Param('id', ParseIntPipe) id: number) {
+    return this.svc.remove(id);
   }
 }
