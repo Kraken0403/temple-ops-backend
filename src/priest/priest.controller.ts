@@ -90,22 +90,28 @@ import {
       return this.svc.getSlotsForPriestInRange(priestId, new Date(from), new Date(to));
     }
 
+    // src/priest/priest.controller.ts
     @Get(':priestId/available-chunks')
     async getAvailableChunks(
       @Param('priestId', ParseIntPipe) priestId: number,
       @Query('duration') duration: string,
-      @Query('date') date: string
+      @Query('date') date: string,
+      @Query('totalMinutes') totalMinutes?: string,   // allow new names too
+      @Query('bookingDate') bookingDate?: string,
     ) {
-      const poojaDuration = parseInt(duration, 10);
-      if (isNaN(poojaDuration)) {
-        throw new BadRequestException('Invalid duration');
-      }
-      if (!date) {
-        throw new BadRequestException('Date is required');
-      }
+      const finalDate = date ?? bookingDate;
+      const minutesStr = duration ?? totalMinutes;
+      const minutes = Number(minutesStr);
 
-      return this.svc.getAvailableChunks(priestId, date, poojaDuration);
+      if (!finalDate) throw new BadRequestException('Date/bookingDate is required');
+      if (!minutes || Number.isNaN(minutes)) throw new BadRequestException('duration/totalMinutes must be a positive number');
+
+      // Helpful server log so you can see hits in prod
+      console.log('[API] available-chunks', { priestId, finalDate, minutes });
+
+      return this.svc.getAvailableChunks(priestId, finalDate, minutes);
     }
+
 
   }
   
