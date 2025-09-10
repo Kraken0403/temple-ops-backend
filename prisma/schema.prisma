@@ -21,6 +21,8 @@ model MediaAsset {
   // back-relations
   albumItems      AlbumItem[]
   coverForAlbums  Album[]    @relation("AlbumCover") // <-- opposite side for Album.cover
+
+   @@map("mediaasset")
 }
 
 model Album {
@@ -36,6 +38,7 @@ model Album {
   createdAt   DateTime     @default(now())
   updatedAt   DateTime     @updatedAt
   items       AlbumItem[]
+  @@map("album")
 }
 
 model AlbumItem {
@@ -49,6 +52,7 @@ model AlbumItem {
 
   @@index([albumId])
   @@index([mediaId])
+  @@map("albumitem")
 }
 
 
@@ -69,6 +73,7 @@ model Priest {
 
   // optional user reference
   user           User?
+  @@map("priest")
 }
 
 model Pooja {
@@ -106,6 +111,7 @@ model Pooja {
   updatedAt       DateTime  @updatedAt
 
   deletedAt       DateTime?
+  @@map("pooja")
 }
 
 enum SlotType {
@@ -133,6 +139,7 @@ model AvailabilitySlot {
   type        SlotType  @default(AVAILABLE)
 
   @@index([priestId])
+  @@map("availabilityslot")
 }
 
 model Permission {
@@ -140,6 +147,7 @@ model Permission {
   name        String            @unique                   // e.g. "bookings.read", "bookings.create"
   description String?
   rolePermissions RolePermission[]
+  @@map("permission")
 }
 
  model RolePermission {
@@ -149,6 +157,7 @@ model Permission {
    permissionId Int
 
    @@id([roleId, permissionId])
+   @@map("rolepermission")
  }
 
 
@@ -184,6 +193,7 @@ model Booking {
   venueZip      String?
 
   createdAt     DateTime  @default(now())
+  @@map("booking")
 }
 
 
@@ -193,6 +203,7 @@ model StaticPage {
   template  String   // e.g., "home", "about", etc.
   content   Json     // structured JSON matching frontend needs
   updatedAt DateTime @updatedAt
+  @@map("staticpage")
 }
 
 
@@ -205,6 +216,7 @@ model DonationItem {
   updatedAt DateTime  @updatedAt
 
   donations DonationRecord[]
+  @@map("donationitem")
 }
 
 model DonationRecord {
@@ -221,6 +233,7 @@ model DonationRecord {
   amountAtDonation   Float
 
   createdAt DateTime @default(now())
+  @@map("donationrecord")
 }
 
 
@@ -240,6 +253,7 @@ model User {
   sponsorshipBookings SponsorshipBooking[]
 
   poojaBookings       Booking[]
+  @@map("user")
 }
 
 
@@ -248,6 +262,7 @@ model User {
    name  String     @unique
    users          UserRole[]
    rolePermissions RolePermission[]
+   @@map("role")
  }
 
 
@@ -258,6 +273,7 @@ model UserRole {
   roleId Int
 
   @@id([userId, roleId])
+   @@map("userrole")
 }
 
 
@@ -284,6 +300,7 @@ model Event {
 
   bookings     EventBooking[]
   sponsorships EventSponsorship[] 
+  @@map("event")
 }
 
 model EventBooking {
@@ -303,6 +320,7 @@ model EventBooking {
   userName   String?
   userEmail  String?
   userPhone  String?
+  @@map("eventbooking")
 }
 
 model SponsorshipType {
@@ -312,6 +330,7 @@ model SponsorshipType {
   createdAt   DateTime           @default(now())
   price       Float 
   eventSponsorships EventSponsorship[]
+    @@map("sponsorshiptype")
 }
 
 model EventSponsorship {
@@ -328,6 +347,7 @@ model EventSponsorship {
   bookings          SponsorshipBooking[]
 
   @@unique([eventId, sponsorshipTypeId]) // prevent duplicate sponsorship type in the same event
+  @@map("eventsponsorship")
 }
 
 model SponsorshipBooking {
@@ -345,11 +365,13 @@ model SponsorshipBooking {
   sponsorLogo         String?
 
   bookedAt            DateTime           @default(now())
+   @@map("sponsorshipbooking")
 }
 
 model Settings {
   id       Int     @id @default(1) // always only one row
   currency String  @default("INR")
   // You can add more global settings here later (e.g. timezone, language, tax rates, etc.)
+   @@map("settings")
 }
 
