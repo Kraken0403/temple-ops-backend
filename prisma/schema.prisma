@@ -508,6 +508,7 @@ model Category {
 
   bhajans   Bhajan[]
   blogs     Blog[]
+  @@map("category")
 }
 
 model Bhajan {
