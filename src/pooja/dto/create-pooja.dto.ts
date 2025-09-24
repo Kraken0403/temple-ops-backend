@@ -1,103 +1,55 @@
-// src/pooja/dto/create-pooja.dto.ts
-
-import type { Express } from 'express';
 import {
-  IsString,
-  IsNumber,
-  IsBoolean,
-  IsDateString,
-  IsOptional,
-  IsArray,
-  ValidateIf,
+  IsString, IsNumber, IsBoolean, IsDateString, IsOptional, IsArray
 } from 'class-validator';
-import { ApiProperty } from '@nestjs/swagger';
-import { Type }        from 'class-transformer';
+import { Type } from 'class-transformer';
 
 export class CreatePoojaDto {
-  @IsString()
-  name!: string;
+  @IsString() name!: string;
 
-  @IsArray()
-  @IsNumber({}, { each: true })
+  @IsArray() @Type(() => Number) @IsNumber({}, { each: true })
   priestIds!: number[];
 
-  @IsNumber()
-  @Type(() => Number)
-  amount!: number;
+  @IsNumber() @Type(() => Number) amount!: number;
+  @IsNumber() @Type(() => Number) durationMin!: number;
+  @IsNumber() @Type(() => Number) prepTimeMin!: number;
+  @IsNumber() @Type(() => Number) bufferMin!: number;
 
-  @IsNumber()
-  @Type(() => Number)
-  durationMin!: number;
+  @IsBoolean() @Type(() => Boolean) isInVenue!: boolean;
+  @IsBoolean() @Type(() => Boolean) isOutsideVenue!: boolean;
 
-  @IsNumber()
-  @Type(() => Number)
-  prepTimeMin!: number;
+  /** In-venue: select from saved venues */
+  @IsOptional() @Type(() => Number) @IsNumber()
+  venueId?: number;
 
-  @IsNumber()
-  @Type(() => Number)
-  bufferMin!: number;
+  /** Outside-venue: free text + map link */
+  @IsOptional() @IsDateString() date?: string;
+  @IsOptional() @IsDateString() time?: string;
 
-  @IsBoolean()
-  @Type(() => Boolean)
-  isInVenue!: boolean;
+  @IsOptional() @IsString() venueAddress?: string;
+  @IsOptional() @IsString() mapLink?: string;
 
-  @IsBoolean()
-  @Type(() => Boolean)
-  isOutsideVenue!: boolean;
-
-  // in-venue fields
-  @ValidateIf(o => o.isInVenue)
-  @IsDateString()
-  date!: string;
-
-  @ValidateIf(o => o.isInVenue)
-  @IsDateString()
-  time!: string;
-
-  @ValidateIf(o => o.isInVenue)
-  @IsOptional()
-  @IsString()
-  venueAddress?: string;
-
-  @ValidateIf(o => o.isInVenue)
-  @IsOptional()
-  @IsString()
-  mapLink?: string;
-
-  // outside-venue fields
-  @ValidateIf(o => o.isOutsideVenue)
-  @IsArray()
-  @IsString({ each: true })
+  @IsOptional() @IsArray() @IsString({ each: true })
   allowedZones?: string[];
 
-  @IsOptional()
-  @IsBoolean()
-  @Type(() => Boolean)
+  @IsOptional() @IsBoolean() @Type(() => Boolean)
   includeFood?: boolean;
 
-  @IsOptional()
-  @IsBoolean()
-  @Type(() => Boolean)
+  @IsOptional() @IsBoolean() @Type(() => Boolean)
   includeHall?: boolean;
 
-  @IsOptional()
-  @IsString()
+  @IsOptional() @IsString()
   materials?: string;
 
-  @IsOptional()
-  @IsString()
+  @IsOptional() @IsString()
   notes?: string;
 
-  @IsOptional()
-  @IsString()
-  @ApiProperty({ description: 'Long description of the pooja', required: false })
+  @IsOptional() @IsString()
   description?: string;
 
-  /**
-   * The raw file—Nest’s FileInterceptor will populate this,
-   * controller should handle saving and storing the URL.
-   */
-  @ApiProperty({ type: 'string', format: 'binary', required: false })
-  @IsOptional()
-  photo?: Express.Multer.File;
+  @IsArray() @IsOptional() @Type(() => Number)
+  categoryIds?: number[];
+
+  // unified featured image
+  @IsOptional() @Type(() => Number)
+  featuredMediaId?: number;
 }

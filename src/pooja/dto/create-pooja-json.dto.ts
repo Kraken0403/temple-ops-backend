@@ -1,56 +1,46 @@
-// src/pooja/dto/create-pooja-json.dto.ts
-import {
-    IsString, IsNumber, IsBoolean,
-    IsDateString, IsOptional, IsArray, ValidateIf
-  } from 'class-validator';
-  import { Type } from 'class-transformer';
-  
-  export class CreatePoojaJsonDto {
-    @IsString()         name!: string;
-  
-    @IsArray()
-    @Type(() => Number)
-    @IsNumber({}, { each: true })
-                        priestIds!: number[];
-  
-    @Type(() => Number)  @IsNumber() amount!: number;
+import { IsString, IsNumber, IsBoolean, IsDateString, IsOptional, IsArray } from 'class-validator';
+import { Type } from 'class-transformer';
 
-  
-    @Type(() => Number)  @IsNumber() durationMin!: number;
-    @Type(() => Number)  @IsNumber() prepTimeMin!: number;
-    @Type(() => Number)  @IsNumber() bufferMin!: number;
-  
-    @Type(() => Boolean) @IsBoolean()    isInVenue!: boolean;
-    @Type(() => Boolean) @IsBoolean()    isOutsideVenue!: boolean;
-  
-    @ValidateIf(o => o.isInVenue)
-    @IsDateString()       date?: string;
-  
-    @ValidateIf(o => o.isInVenue)
-    @IsDateString()       time?: string;
-  
-    @ValidateIf(o => o.isInVenue)
-    @IsOptional() @IsString() venueAddress?: string;
-  
-    @ValidateIf(o => o.isInVenue)
-    @IsOptional() @IsString() mapLink?: string;
-  
-    @ValidateIf(o => o.isOutsideVenue)
-    @IsArray() @IsString({ each: true })
-                          allowedZones?: string[];
-  
-    @IsOptional() @Type(() => Boolean) @IsBoolean()
-                          includeFood?: boolean;
-  
-    @IsOptional() @Type(() => Boolean) @IsBoolean()
-                          includeHall?: boolean;
-  
-    @IsOptional() @IsString() materials?: string;
-    @IsOptional() @IsString() notes?: string;
-    @IsOptional()
-    @IsString()
-    description?: string;
-  
-    @IsOptional() @IsString() photoUrl?: string;
-  }
-  
+export class CreatePoojaJsonDto {
+  @IsString() name!: string;
+
+  @IsArray() @Type(() => Number) @IsNumber({}, { each: true })
+  priestIds!: number[];
+
+  // ⬇️ NEW
+  @IsOptional()
+  @IsArray()
+  @Type(() => Number)
+  @IsNumber({}, { each: true })
+  categoryIds?: number[];
+
+  @Type(() => Number) @IsNumber() amount!: number;
+  @Type(() => Number) @IsNumber() durationMin!: number;
+  @Type(() => Number) @IsNumber() prepTimeMin!: number;
+  @Type(() => Number) @IsNumber() bufferMin!: number;
+
+  @Type(() => Boolean) @IsBoolean() isInVenue!: boolean;
+  @Type(() => Boolean) @IsBoolean() isOutsideVenue!: boolean;
+
+  @IsOptional() @Type(() => Number) @IsNumber()
+  venueId?: number;
+
+  @IsOptional() @IsDateString() date?: string;
+  @IsOptional() @IsDateString() time?: string;
+
+  @IsOptional() @IsString() venueAddress?: string;
+  @IsOptional() @IsString() mapLink?: string;
+
+  @IsArray() @IsOptional() @IsString({ each: true })
+  allowedZones?: string[];
+
+  @IsOptional() @Type(() => Boolean) @IsBoolean() includeFood?: boolean;
+  @IsOptional() @Type(() => Boolean) @IsBoolean() includeHall?: boolean;
+
+  @IsOptional() @IsString() materials?: string;
+  @IsOptional() @IsString() notes?: string;
+  @IsOptional() @IsString() description?: string;
+
+  @IsOptional() @Type(() => Number) featuredMediaId?: number;
+  @IsOptional() clearFeaturedMedia?: boolean;
+}

@@ -10,12 +10,13 @@ const VALID = new Set(['.jpg','.jpeg','.png','.gif','.webp','.svg','.bmp','.tiff
 
 function mimeFor(ext: string) {
   switch (ext) {
-    case '.svg': return 'image/svg+xml'
-    case '.png': return 'image/png'
-    case '.gif': return 'image/gif'
+    case '.svg':  return 'image/svg+xml'
+    case '.png':  return 'image/png'
+    case '.gif':  return 'image/gif'
     case '.webp': return 'image/webp'
-    case '.bmp': return 'image/bmp'
+    case '.bmp':  return 'image/bmp'
     case '.tiff': return 'image/tiff'
+    case '.pdf':  return 'application/pdf' 
     default: return 'image/jpeg'
   }
 }
@@ -113,14 +114,20 @@ export class MediaService implements OnModuleInit {
   async saveUploadedFile(file: Express.Multer.File) {
     if (!file) throw new BadRequestException('File is required')
 
-    // Multer wrote file to /uploads/YY/MM/<filename>
-    const dest = file.destination || uploadRoot
-    const rel = dest.replace(uploadRoot, '').replace(/\\/g, '/')
-    const url = `/uploads${rel}/${file.filename}`.replace(/\/+/, '/uploads/')
+    // Where multer stored it (e.g. <root>/uploads/2025/09)
+    const destAbs = file.destination || uploadRoot
+
+    // Compute a POSIX relative folder like "2025/09"
+    let relDir = path.relative(uploadRoot, destAbs).replace(/\\/g, '/')
+    // Remove any accidental leading "uploads/" segments just in case
+    relDir = relDir.replace(/^\/?(?:uploads\/)+/i, '')
+
+    // Build a single, normalized URL: "/uploads/2025/09/filename.ext"
+    const urlPath = path.posix.join('/uploads', relDir, file.filename)
 
     return this.prisma.mediaAsset.create({
       data: {
-        url,
+        url: urlPath,                                // <-- no duplication
         filename: file.originalname || file.filename,
         mimeType: file.mimetype,
         sizeBytes: file.size,

@@ -22,13 +22,16 @@ import { StaticPagesModule } from './static-pages/static-pages.module'
 import { NotificationsModule } from './notifications/notifications.module'
 import { MediaModule } from './media/media.module'
 import { AlbumsModule } from './albums/albums.module'
+import { VenuesModule } from './venues/venues.module'
+import { PoojaCategoryModule } from './pooja-category/pooja-category.module'
+import { BhajansModule } from './bhajans/bhajans.module';
 
 @Module({
   
   imports: [ ServeStaticModule.forRoot({
     rootPath: path.join(process.cwd(), 'uploads'),
     serveRoot: '/uploads',
-  }), PrismaModule, NotificationsModule, RoleUsersModule, UsersModule, RolesModule, AuthModule, StaticPagesModule, PoojaModule, PriestModule, BookingModule, EventsModule, DonationsModule, SponsorshipModule, SettingsModule, PermissionsModule, RolePermissionsModule, MediaModule, AlbumsModule],
+  }), PrismaModule,BhajansModule, PoojaCategoryModule, NotificationsModule, RoleUsersModule, UsersModule, RolesModule, AuthModule, StaticPagesModule, PoojaModule, PriestModule, BookingModule, EventsModule, DonationsModule, SponsorshipModule, SettingsModule, PermissionsModule, RolePermissionsModule, MediaModule, AlbumsModule, VenuesModule],
 
 })
 export class AppModule {}

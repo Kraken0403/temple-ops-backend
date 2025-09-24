@@ -7,37 +7,52 @@ generator client {
   provider = "prisma-client-js"
 }
 
+/**
+ * ───────────────── Media & Albums ─────────────────
+ */
+
 model MediaAsset {
-  id              Int        @id @default(autoincrement())
-  url             String     @unique
-  filename        String
-  mimeType        String?
-  sizeBytes       Int?
-  width           Int?
-  height          Int?
-  uploadedBy      Int?
-  createdAt       DateTime   @default(now())
+  id         Int      @id @default(autoincrement())
+  url        String   @unique
+  filename   String
+  mimeType   String?
+  sizeBytes  Int?
+  width      Int?
+  height     Int?
+  uploadedBy Int?
+  createdAt  DateTime @default(now())
 
-  // back-relations
-  albumItems      AlbumItem[]
-  coverForAlbums  Album[]    @relation("AlbumCover") // <-- opposite side for Album.cover
+  // Album relations
+  albumItems     AlbumItem[]
+  coverForAlbums Album[]     @relation("AlbumCover")
 
-   @@map("mediaasset")
+  // Featured image back-relations
+  featuredForPoojas   Pooja[]              @relation("PoojaFeaturedMedia")
+  featuredForPriests  Priest[]             @relation("PriestFeaturedMedia")
+  featuredForEvents   Event[]              @relation("EventFeaturedMedia")
+  featuredForSponsors SponsorshipBooking[] @relation("SponsorshipLogoMedia")
+
+  // Gallery back-relations
+  poojaGalleryItems PoojaMedia[] @relation("PoojaGalleryMedia")
+  eventGalleryItems EventMedia[] @relation("EventGalleryMedia")
+
+  @@map("mediaasset")
 }
 
 model Album {
-  id          Int          @id @default(autoincrement())
+  id          Int     @id @default(autoincrement())
   title       String
-  slug        String       @unique
-  description String?      @db.VarChar(1000)
+  slug        String  @unique
+  description String? @db.VarChar(1000)
 
-  coverId     Int?
-  cover       MediaAsset?  @relation("AlbumCover", fields: [coverId], references: [id], onDelete: SetNull) // <-- optional
+  coverId Int?
+  cover   MediaAsset? @relation("AlbumCover", fields: [coverId], references: [id], onDelete: SetNull)
 
-  isPublic    Boolean      @default(true)
-  createdAt   DateTime     @default(now())
-  updatedAt   DateTime     @updatedAt
-  items       AlbumItem[]
+  isPublic  Boolean     @default(true)
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
+  items     AlbumItem[]
+
   @@map("album")
 }
 
@@ -55,62 +70,79 @@ model AlbumItem {
   @@map("albumitem")
 }
 
-
+/**
+ * ───────────────── Core Domain ─────────────────
+ */
 
 model Priest {
-  id             Int                 @id @default(autoincrement())
+  id             Int                @id @default(autoincrement())
   name           String
   specialty      String?
-  photo          String?
   contactNo      String?
   email          String?
-  languages      Json          // string[]
+  languages      Json
   address        String?
-  qualifications Json               // already a JSON array
+  qualifications Json
+
   slots          AvailabilitySlot[]
   bookings       Booking[]
   poojas         Pooja[]            @relation("PoojaPriests")
 
   // optional user reference
-  user           User?
+  user User?
+
+  // ✅ Featured image (one-to-one optional) — unified approach
+  featuredMediaId Int?
+  featuredMedia   MediaAsset? @relation("PriestFeaturedMedia", fields: [featuredMediaId], references: [id])
+
   @@map("priest")
 }
 
 model Pooja {
-  id              Int       @id @default(autoincrement())
-  name            String
-  amount          Float
+  id     Int    @id @default(autoincrement())
+  name   String
+  amount Float
 
+  date DateTime?
+  time DateTime?
 
-  date            DateTime? // optional date
-  time            DateTime? // optional time
+  durationMin Int
+  prepTimeMin Int
+  bufferMin   Int
 
-  durationMin     Int
-  prepTimeMin     Int
-  bufferMin       Int
+  isInVenue      Boolean
+  isOutsideVenue Boolean
 
-  isInVenue       Boolean
-  isOutsideVenue  Boolean
+    /// NEW: link to a saved Venue when isInVenue = true
+  venueId  Int?
+  venue   Venue? @relation("VenuePoojas", fields: [venueId], references: [id], onDelete: SetNull)
 
-  venueAddress    String?
-  mapLink         String?
-  allowedZones    Json?     // optional JSON array
+  venueAddress String?
+  mapLink      String?
+  allowedZones Json?
 
-  photoUrl        String?
-  includeFood     Boolean   @default(false)
-  includeHall     Boolean   @default(false)
-  materials       String?   @db.VarChar(1000)
-  notes           String?   @db.VarChar(1000)
-  description     String?   @db.Text
+  featuredMediaId Int?
+  featuredMedia   MediaAsset? @relation("PoojaFeaturedMedia", fields: [featuredMediaId], references: [id])
+
+  // Gallery (many images)
+  gallery PoojaMedia[]
+
+  includeFood Boolean @default(false)
+  includeHall Boolean @default(false)
+  materials   String? @db.VarChar(1000)
+  notes       String? @db.VarChar(1000)
+  description String? @db.Text
 
   // many-to-many to Priest
-  priests         Priest[]  @relation("PoojaPriests")
-  bookings        Booking[]
+  priests  Priest[]  @relation("PoojaPriests")
+  bookings Booking[]
 
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
 
-  deletedAt       DateTime?
+  categories PoojaCategory[] @relation("PoojaCategories")
+
   @@map("pooja")
 }
 
@@ -121,63 +153,62 @@ enum SlotType {
 }
 
 model AvailabilitySlot {
-  id          Int       @id @default(autoincrement())
-  priest      Priest    @relation(fields: [priestId], references: [id])
-  priestId    Int
+  id       Int    @id @default(autoincrement())
+  priest   Priest @relation(fields: [priestId], references: [id])
+  priestId Int
 
   /// For one-off slots (a specific calendar date)
-  date        DateTime?   
+  date DateTime?
 
   /// Time-of-day range (HH:MM:SS) for both one-offs and recurrings
-  start       DateTime    @db.Time
-  end         DateTime    @db.Time
+  start DateTime @db.Time
+  end   DateTime @db.Time
 
   /// If you’re doing a weekly recurring slot, list weekdays here
-  daysOfWeek  Json?     @db.Json  
+  daysOfWeek Json? @db.Json
 
-  disabled    Boolean   @default(false)
-  type        SlotType  @default(AVAILABLE)
+  disabled Boolean  @default(false)
+  type     SlotType @default(AVAILABLE)
 
   @@index([priestId])
   @@map("availabilityslot")
 }
 
 model Permission {
-  id          Int               @id @default(autoincrement())
-  name        String            @unique                   // e.g. "bookings.read", "bookings.create"
-  description String?
+  id              Int              @id @default(autoincrement())
+  name            String           @unique
+  description     String?
   rolePermissions RolePermission[]
+
   @@map("permission")
 }
 
- model RolePermission {
-   role         Role       @relation(fields: [roleId], references: [id])
-   roleId       Int
-   permission   Permission @relation(fields: [permissionId], references: [id])
-   permissionId Int
+model RolePermission {
+  role         Role       @relation(fields: [roleId], references: [id])
+  roleId       Int
+  permission   Permission @relation(fields: [permissionId], references: [id])
+  permissionId Int
 
-   @@id([roleId, permissionId])
-   @@map("rolepermission")
- }
-
-
+  @@id([roleId, permissionId])
+  @@map("rolepermission")
+}
 
 model Booking {
-  id            Int       @id @default(autoincrement())
-  userId        Int?
-  user          User?     @relation(fields: [userId], references: [id])
+  id     Int   @id @default(autoincrement())
+  userId Int?
+  user   User? @relation(fields: [userId], references: [id])
 
-  poojaId       Int
-  priestId      Int
-  pooja         Pooja     @relation(fields: [poojaId], references: [id])
-  priest        Priest    @relation(fields: [priestId], references: [id])
+  poojaId  Int
+  priestId Int
+  pooja    Pooja  @relation(fields: [poojaId], references: [id])
+  priest   Priest @relation(fields: [priestId], references: [id])
 
   // user-chosen date/time
-  bookingDate   DateTime
-  start         DateTime
-  end           DateTime
+  bookingDate DateTime
+  start       DateTime
+  end         DateTime
 
-  status        String    @default("confirmed")
+  status String @default("confirmed")
 
   // 🔒 immutable snapshots (do NOT depend on live pooja/priest)
   amountAtBooking     Float
@@ -185,37 +216,38 @@ model Booking {
   priestNameAtBooking String?
 
   // guest details / venue
-  userName      String?
-  userEmail     String?
-  userPhone     String?
-  venueAddress  String?
-  venueState    String?
-  venueZip      String?
+  userName     String?
+  userEmail    String?
+  userPhone    String?
+  venueAddress String?
+  venueState   String?
+  venueZip     String?
 
-  createdAt     DateTime  @default(now())
+  createdAt DateTime @default(now())
+
   @@map("booking")
 }
 
-
 model StaticPage {
   id        Int      @id @default(autoincrement())
-  slug      String   @unique  // e.g., "home", "about", "gallery", "bhajans"
-  template  String   // e.g., "home", "about", etc.
-  content   Json     // structured JSON matching frontend needs
+  slug      String   @unique
+  content   Json
+  createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
   @@map("staticpage")
 }
 
-
 model DonationItem {
-  id        Int       @id @default(autoincrement())
-  name      String
-  amount    Float
+  id     Int    @id @default(autoincrement())
+  name   String
+  amount Float
 
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   donations DonationRecord[]
+
   @@map("donationitem")
 }
 
@@ -224,47 +256,45 @@ model DonationRecord {
   donationItem   DonationItem @relation(fields: [donationItemId], references: [id])
   donationItemId Int
 
-  donorName      String
-  donorEmail     String
-  donorPhone     String
+  donorName  String
+  donorEmail String
+  donorPhone String
 
   // 🔹 Snapshot fields
   itemNameAtDonation String
   amountAtDonation   Float
 
   createdAt DateTime @default(now())
+
   @@map("donationrecord")
 }
-
-
 
 model User {
   id       Int        @id @default(autoincrement())
   email    String     @unique
   password String
-  roles    UserRole[] 
+  roles    UserRole[]
 
-  // ← add this if you want to link a User to a Priest account
-  priest        Priest?                 @relation(fields: [priestId], references: [id])
-  priestId      Int?                    @unique
+  // link a User to a Priest account (optional)
+  priest   Priest? @relation(fields: [priestId], references: [id])
+  priestId Int?    @unique
 
   // bookings made by this user
-  eventBookings EventBooking[]          
+  eventBookings       EventBooking[]
   sponsorshipBookings SponsorshipBooking[]
-
   poojaBookings       Booking[]
+
   @@map("user")
 }
 
+model Role {
+  id              Int              @id @default(autoincrement())
+  name            String           @unique
+  users           UserRole[]
+  rolePermissions RolePermission[]
 
- model Role {
-   id    Int        @id @default(autoincrement())
-   name  String     @unique
-   users          UserRole[]
-   rolePermissions RolePermission[]
-   @@map("role")
- }
-
+  @@map("role")
+}
 
 model UserRole {
   user   User @relation(fields: [userId], references: [id])
@@ -273,105 +303,252 @@ model UserRole {
   roleId Int
 
   @@id([userId, roleId])
-   @@map("userrole")
+  @@map("userrole")
 }
 
-
 model Event {
-  id           Int               @id @default(autoincrement())
-  name         String
-  description  String?           @db.VarChar(1000)
-  imageUrl     String?           // cover image for the event
-  venue        String
-  mapLink      String?           // e.g. Google Maps URL
-  date         DateTime          // when the event starts
-  endDate      DateTime?         // if it spans multiple days
-  startTime    DateTime?         // separate start time on the same day
-  endTime      DateTime?         // separate end time on the same day
-  tags         Json?             // store array of strings as JSON
-  capacity     Int?              // maximum number of attendees
-  price        Float?            // ticket price
- 
-  organizer    String?           // name of the host
-  contactInfo  String?           // email/phone for questions
-  isPublic     Boolean           @default(true)
-  createdAt    DateTime          @default(now())
-  updatedAt    DateTime          @updatedAt
+  id          Int       @id @default(autoincrement())
+  name        String
+  description String?   @db.VarChar(1000)
+
+  // Outside venue (legacy fields kept as-is)
+  venue       String                         // outside-venue address/name
+  mapLink     String?                        // outside-venue map link
+
+
+  venueId     Int?                           // NEW
+  venueRel    Venue? @relation("VenueEvents", fields: [venueId], references: [id], onDelete: SetNull) // NEW
+
+  // Flags (mirror Pooja)
+  isInVenue      Boolean  @default(false)    // NEW
+  isOutsideVenue Boolean  @default(true)     // NEW
+
+  date        DateTime
+  endDate     DateTime?
+  startTime   DateTime?
+  endTime     DateTime?
+  tags        Json?
+  capacity    Int?
+  price       Float?
+
+  organizer   String?
+  contactInfo String?
+  isPublic    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 
   bookings     EventBooking[]
-  sponsorships EventSponsorship[] 
+  sponsorships EventSponsorship[]
+
+  // ✅ Featured image (one-to-one optional) — unified approach
+  featuredMediaId Int?
+  featuredMedia   MediaAsset? @relation("EventFeaturedMedia", fields: [featuredMediaId], references: [id])
+
+  // Gallery
+  gallery EventMedia[]
+
   @@map("event")
 }
 
+
 model EventBooking {
-  id         Int      @id @default(autoincrement())
-  event      Event    @relation(fields: [eventId], references: [id])
-  eventId    Int
+  id      Int   @id @default(autoincrement())
+  event   Event @relation(fields: [eventId], references: [id])
+  eventId Int
 
-  // no longer required
-  user       User?    @relation(fields: [userId], references: [id])
-  userId     Int?     
+  user   User? @relation(fields: [userId], references: [id])
+  userId Int?
 
-  pax        Int      @default(1)
-  status     String   @default("confirmed")
-  bookedAt   DateTime @default(now())
+  pax      Int      @default(1)
+  status   String   @default("confirmed")
+  bookedAt DateTime @default(now())
 
   // always store these for a guest
-  userName   String?
-  userEmail  String?
-  userPhone  String?
+  userName  String?
+  userEmail String?
+  userPhone String?
+
   @@map("eventbooking")
 }
 
 model SponsorshipType {
-  id          Int                @id @default(autoincrement())
-  name        String             @unique
+  id          Int      @id @default(autoincrement())
+  name        String   @unique
   description String?
-  createdAt   DateTime           @default(now())
-  price       Float 
+  createdAt   DateTime @default(now())
+  price       Float
+
   eventSponsorships EventSponsorship[]
-    @@map("sponsorshiptype")
+
+  @@map("sponsorshiptype")
 }
 
 model EventSponsorship {
-  id                Int                @id @default(autoincrement())
-  event             Event              @relation(fields: [eventId], references: [id])
-  eventId           Int
+  id      Int   @id @default(autoincrement())
+  event   Event @relation(fields: [eventId], references: [id])
+  eventId Int
 
-  sponsorshipType   SponsorshipType    @relation(fields: [sponsorshipTypeId], references: [id])
+  sponsorshipType   SponsorshipType @relation(fields: [sponsorshipTypeId], references: [id])
   sponsorshipTypeId Int
 
-  price             Float
-  maxSlots          Int                @default(1)
+  price    Float
+  maxSlots Int   @default(1)
 
-  bookings          SponsorshipBooking[]
+  bookings SponsorshipBooking[]
 
-  @@unique([eventId, sponsorshipTypeId]) // prevent duplicate sponsorship type in the same event
+  @@unique([eventId, sponsorshipTypeId])
   @@map("eventsponsorship")
 }
 
 model SponsorshipBooking {
-  id                  Int                @id @default(autoincrement())
-  user                User?              @relation(fields: [userId], references: [id])
-  userId              Int?
+  id     Int   @id @default(autoincrement())
+  user   User? @relation(fields: [userId], references: [id])
+  userId Int?
 
-  eventSponsorship    EventSponsorship   @relation(fields: [eventSponsorshipId], references: [id])
-  eventSponsorshipId  Int
+  eventSponsorship   EventSponsorship @relation(fields: [eventSponsorshipId], references: [id])
+  eventSponsorshipId Int
 
-  status              String             @default("pending") // pending, confirmed, failed
-  sponsorName         String
-  sponsorEmail        String
-  sponsorPhone        String
-  sponsorLogo         String?
+  status       String  @default("pending") // pending, confirmed, failed
+  sponsorName  String
+  sponsorEmail String
+  sponsorPhone String
 
-  bookedAt            DateTime           @default(now())
-   @@map("sponsorshipbooking")
+  // ✅ unify logo as media (replaces old sponsorLogo string)
+  logoMediaId Int?
+  logoMedia   MediaAsset? @relation("SponsorshipLogoMedia", fields: [logoMediaId], references: [id])
+
+  bookedAt DateTime @default(now())
+
+  @@map("sponsorshipbooking")
 }
 
 model Settings {
-  id       Int     @id @default(1) // always only one row
-  currency String  @default("INR")
-  // You can add more global settings here later (e.g. timezone, language, tax rates, etc.)
-   @@map("settings")
+  id       Int    @id @default(1)
+  currency String @default("INR")
+
+  @@map("settings")
+}
+
+/**
+ * ───────────────── Gallery Join Tables ─────────────────
+ */
+
+model PoojaMedia {
+  id      Int   @id @default(autoincrement())
+  pooja   Pooja @relation(fields: [poojaId], references: [id], onDelete: Cascade)
+  poojaId Int
+
+  media   MediaAsset @relation("PoojaGalleryMedia", fields: [mediaId], references: [id], onDelete: Cascade)
+  mediaId Int
+
+  sortOrder Int @default(0)
+
+  @@unique([poojaId, mediaId])
+  @@index([poojaId])
+  @@index([mediaId])
+  @@map("poojamedia")
+}
+
+model EventMedia {
+  id      Int   @id @default(autoincrement())
+  event   Event @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  eventId Int
+
+  media   MediaAsset @relation("EventGalleryMedia", fields: [mediaId], references: [id], onDelete: Cascade)
+  mediaId Int
+
+  sortOrder Int @default(0)
+
+  @@unique([eventId, mediaId])
+  @@index([eventId])
+  @@index([mediaId])
+  @@map("eventmedia")
+}
+
+model Venue {
+  id        Int      @id @default(autoincrement())
+  title     String
+  address   String   @db.VarChar(1000)
+  zipcode   String   @db.VarChar(20)
+  mapLink   String?  @db.VarChar(1000)
+
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  poojas    Pooja[]  @relation("VenuePoojas")
+  events    Event[]  @relation("VenueEvents")
+
+  @@map("venue")
+}
+
+model PoojaCategory {
+  id          Int       @id @default(autoincrement())
+  name        String    @unique
+  slug        String    @unique
+  description String?   @db.VarChar(500)
+  isActive    Boolean   @default(true)
+  sortOrder   Int       @default(0)
+
+  // m:n to Pooja
+  poojas      Pooja[]   @relation("PoojaCategories")
+
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@map("poojacategory")
+}
+
+model Category {
+  id        Int       @id @default(autoincrement())
+  name      String
+  slug      String    @unique
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  bhajans   Bhajan[]
+  blogs     Blog[]
+}
+
+model Bhajan {
+  id            Int       @id @default(autoincrement())
+  title         String
+  slug          String    @unique
+  language      String?
+  categoryId    Int?
+  category      Category? @relation(fields: [categoryId], references: [id])
+  pdfUrl        String
+  lyricsHtml    String?
+  audioUrl      String?
+  thumbnailUrl  String?
+  tagsJson      String?   // JSON stringified array of strings
+  isPublished   Boolean   @default(true)
+  publishedAt   DateTime? @default(now())
+  viewsCount    Int       @default(0)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@map("bhajan")
+
+}
+
+model Blog {
+  id           Int       @id @default(autoincrement())
+  title        String
+  slug         String    @unique
+  excerpt      String?
+  coverImageUrl String?
+  bodyHtml     String?
+  tagsJson     String?
+  categoryId   Int?
+  category     Category? @relation(fields: [categoryId], references: [id])
+  authorName   String?
+  isPublished  Boolean   @default(true)
+  publishedAt  DateTime? @default(now())
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  @@map("blog")
+
 }
 
