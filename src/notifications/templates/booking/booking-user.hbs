@@ -52,7 +52,7 @@
           <tr>
             <td style="padding:24px;">
               <h1 class="h1">Thank you, {{userName}}!</h1>
-              <p class="p">Your booking is confirmed.</p>
+              <p class="p">Your booking is confirmed. Here are your booking details:</p>
             </td>
           </tr>
 
@@ -61,27 +61,38 @@
           <tr>
             <td style="padding:20px 24px;">
               <h2 class="h2 brand">{{poojaName}}</h2>
-              <table role="presentation" width="100%" style="margin-top:12px;">
-                <tr>
-                  <td class="pill stack">
-                    <span class="label">Date</span>
-                    <span class="value">{{bookingDateText}}</span>
-                  </td>
-                  <td style="width:12px;"></td>
-                  <td class="pill stack">
-                    <span class="label">Time</span>
-                    <span class="value">{{startTimeText}} – {{endTimeText}}</span>
-                  </td>
-                </tr>
-              </table>
-
               <ul style="list-style:none; padding:0; margin:16px 0 0;">
-                {{#if venueText}}
-                  <li class="li"><strong>Venue:</strong> {{venueText}}</li>
-                {{/if}}
+                <li class="li"><strong>Booking ID:</strong> #{{bookingId}}</li>
                 <li class="li"><strong>Status:</strong> {{status}}</li>
+                <li class="li"><strong>Date:</strong> {{bookingDateText}}</li>
+                <li class="li"><strong>Time:</strong> {{startTimeText}} – {{endTimeText}}</li>
                 {{#if priestName}}
                   <li class="li"><strong>Priest:</strong> {{priestName}}</li>
+                {{/if}}
+                <li class="li"><strong>Amount:</strong> {{amount}} {{currency}}</li>
+                {{#if durationMin}}
+                  <li class="li"><strong>Duration:</strong> {{durationMin}} minutes</li>
+                {{/if}}
+                {{#if prepTimeMin}}
+                  <li class="li"><strong>Preparation Time:</strong> {{prepTimeMin}} minutes</li>
+                {{/if}}
+                {{#if bufferMin}}
+                  <li class="li"><strong>Buffer Time:</strong> {{bufferMin}} minutes</li>
+                {{/if}}
+                {{#if includeFood}}
+                  <li class="li"><strong>Includes Food:</strong> Yes</li>
+                {{/if}}
+                {{#if includeHall}}
+                  <li class="li"><strong>Includes Hall:</strong> Yes</li>
+                {{/if}}
+                {{#if materials}}
+                  <li class="li"><strong>Materials:</strong> {{materials}}</li>
+                {{/if}}
+                {{#if notes}}
+                  <li class="li"><strong>Notes:</strong> {{notes}}</li>
+                {{/if}}
+                {{#if venueText}}
+                  <li class="li"><strong>Venue:</strong> {{venueText}}</li>
                 {{/if}}
               </ul>
             </td>

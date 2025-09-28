@@ -14,44 +14,46 @@ exports.BookingService = void 0;
 const common_1 = require("@nestjs/common");
 const prisma_service_1 = require("../prisma.service");
 const notifications_service_1 = require("../notifications/notifications.service");
+const timezone_util_1 = require("../common/timezone.util");
 let BookingService = class BookingService {
     constructor(prisma, notifications) {
         this.prisma = prisma;
         this.notifications = notifications;
+        this.tzUtil = new timezone_util_1.TimezoneUtil(prisma);
     }
     // ✅ Create a booking (snapshot immutable facts)
+    // ✅ Create
     async create(dto) {
+        const bookingDate = await this.tzUtil.toUTC(dto.bookingDate);
+        const start = await this.tzUtil.toUTC(dto.start);
+        const end = await this.tzUtil.toUTC(dto.end);
         const pooja = await this.prisma.pooja.findUnique({
             where: { id: dto.poojaId },
             include: { priests: true },
         });
         if (!pooja)
             throw new common_1.BadRequestException('Pooja not found');
-        if (pooja.deletedAt) {
+        if (pooja.deletedAt)
             throw new common_1.BadRequestException('This pooja is no longer available');
-        }
-        const priest = await this.prisma.priest.findUnique({
-            where: { id: dto.priestId },
-        });
+        const priest = await this.prisma.priest.findUnique({ where: { id: dto.priestId } });
         if (!priest)
             throw new common_1.BadRequestException('Priest not found');
         const isAssignedPriest = pooja.priests.some(p => p.id === dto.priestId);
-        if (!isAssignedPriest) {
+        if (!isAssignedPriest)
             throw new common_1.BadRequestException('This priest is not assigned to the selected pooja');
-        }
         const created = await this.prisma.booking.create({
             data: {
                 userId: dto.userId ?? undefined,
                 poojaId: dto.poojaId,
                 priestId: dto.priestId,
-                bookingDate: new Date(dto.bookingDate),
-                start: new Date(dto.start),
-                end: new Date(dto.end),
-                // 🔒 snapshots (do not depend on live pooja/priest later)
+                bookingDate,
+                start,
+                end,
+                // snapshots
                 amountAtBooking: pooja.amount,
                 poojaNameAtBooking: pooja.name,
                 priestNameAtBooking: priest.name ?? null,
-                // optional user/venue fields
+                // optional fields
                 userName: dto.userName ?? undefined,
                 userEmail: dto.userEmail ?? undefined,
                 userPhone: dto.userPhone ?? undefined,
@@ -60,35 +62,53 @@ let BookingService = class BookingService {
                 venueZip: dto.venueZip ?? undefined,
             },
             include: {
-                pooja: { select: { id: true, name: true } }, // sanitized
+                pooja: { select: { id: true, name: true } },
                 priest: { select: { id: true, name: true } },
             },
         });
-        // 🔔 Fire-and-forget email (service handles/logs failures)
         await this.notifications.sendBookingCreated(created.id);
-        return created;
+        return {
+            ...created,
+            bookingDate: await this.tzUtil.fromUTC(created.bookingDate),
+            start: await this.tzUtil.fromUTC(created.start),
+            end: await this.tzUtil.fromUTC(created.end),
+        };
     }
-    // ✅ List (sanitized relations to avoid leaking live price)
+    // ✅ Find all
     async findAll() {
-        return this.prisma.booking.findMany({
+        const list = await this.prisma.booking.findMany({
             orderBy: { createdAt: 'desc' },
             include: {
                 pooja: { select: { id: true, name: true } },
                 priest: { select: { id: true, name: true } },
             },
         });
+        return Promise.all(list.map(async (b) => ({
+            ...b,
+            bookingDate: await this.tzUtil.fromUTC(b.bookingDate),
+            start: await this.tzUtil.fromUTC(b.start),
+            end: await this.tzUtil.fromUTC(b.end),
+        })));
     }
-    // ✅ Get single (sanitized)
+    // ✅ Find one
     async findOne(id) {
-        return this.prisma.booking.findUnique({
+        const b = await this.prisma.booking.findUnique({
             where: { id },
             include: {
                 pooja: { select: { id: true, name: true } },
                 priest: { select: { id: true, name: true } },
             },
         });
+        if (!b)
+            return null;
+        return {
+            ...b,
+            bookingDate: await this.tzUtil.fromUTC(b.bookingDate),
+            start: await this.tzUtil.fromUTC(b.start),
+            end: await this.tzUtil.fromUTC(b.end),
+        };
     }
-    // ✅ Update; refresh snapshots only when pooja/priest changes; notify on success
+    // ✅ Update
     async update(id, dto) {
         const existing = await this.prisma.booking.findUnique({
             where: { id },
@@ -99,7 +119,7 @@ let BookingService = class BookingService {
         const data = {};
         let newPoojaId = existing.poojaId;
         let newPriestId = existing.priestId;
-        // Handle potential pooja change
+        // potential pooja change
         if (dto.poojaId !== undefined) {
             const pooja = await this.prisma.pooja.findUnique({
                 where: { id: dto.poojaId },
@@ -110,7 +130,7 @@ let BookingService = class BookingService {
             data.poojaId = dto.poojaId;
             newPoojaId = dto.poojaId;
         }
-        // Handle potential priest change
+        // potential priest change
         if (dto.priestId !== undefined) {
             const priest = await this.prisma.priest.findUnique({ where: { id: dto.priestId } });
             if (!priest)
@@ -118,7 +138,7 @@ let BookingService = class BookingService {
             data.priestId = dto.priestId;
             newPriestId = dto.priestId;
         }
-        // If either changed, validate new pairing and refresh snapshots
+        // validate pair if changed
         if (dto.poojaId !== undefined || dto.priestId !== undefined) {
             const poojaForCheck = await this.prisma.pooja.findUnique({
                 where: { id: newPoojaId },
@@ -126,7 +146,7 @@ let BookingService = class BookingService {
             });
             const isAssigned = poojaForCheck?.priests?.some(p => p.id === newPriestId);
             if (!isAssigned) {
-                throw new common_1.BadRequestException('This priest is not assigned to the selected pooja');
+                throw new common_1.BadRequestException(`Priest ${newPriestId} is not assigned to pooja ${newPoojaId}`);
             }
             const newPooja = await this.prisma.pooja.findUnique({ where: { id: newPoojaId } });
             const newPriest = await this.prisma.priest.findUnique({ where: { id: newPriestId } });
@@ -134,13 +154,14 @@ let BookingService = class BookingService {
             data.poojaNameAtBooking = newPooja?.name ?? existing.poojaNameAtBooking;
             data.priestNameAtBooking = newPriest?.name ?? existing.priestNameAtBooking;
         }
-        // Standard field updates
+        // timezone-aware updates
         if (dto.bookingDate !== undefined)
-            data.bookingDate = new Date(dto.bookingDate);
+            data.bookingDate = await this.tzUtil.toUTC(dto.bookingDate);
         if (dto.start !== undefined)
-            data.start = new Date(dto.start);
+            data.start = await this.tzUtil.toUTC(dto.start);
         if (dto.end !== undefined)
-            data.end = new Date(dto.end);
+            data.end = await this.tzUtil.toUTC(dto.end);
+        // standard fields
         if (dto.userId !== undefined)
             data.userId = dto.userId;
         if (dto.userName !== undefined)
@@ -161,13 +182,17 @@ let BookingService = class BookingService {
             where: { id },
             data,
             include: {
-                pooja: { select: { id: true, name: true } }, // sanitized
+                pooja: { select: { id: true, name: true } },
                 priest: { select: { id: true, name: true } },
             },
         });
-        // 🔔 Notify on update
         await this.notifications.sendBookingUpdated(updated.id);
-        return updated;
+        return {
+            ...updated,
+            bookingDate: await this.tzUtil.fromUTC(updated.bookingDate),
+            start: await this.tzUtil.fromUTC(updated.start),
+            end: await this.tzUtil.fromUTC(updated.end),
+        };
     }
     // ✅ Delete (hard-delete). Consider soft-cancel in future.
     async remove(id) {

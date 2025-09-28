@@ -20,9 +20,12 @@ let SettingsService = class SettingsService {
         const settings = await this.prisma.settings.findUnique({
             where: { id: 1 },
         });
-        // Fallback default if not set yet
+        // Fallback defaults if not set yet
         if (!settings) {
-            return { currency: 'INR' };
+            return {
+                currency: 'INR',
+                timezone: 'Asia/Kolkata',
+            };
         }
         return settings;
     }
@@ -38,7 +41,11 @@ let SettingsService = class SettingsService {
             });
         }
         return this.prisma.settings.create({
-            data: { id: 1, ...data },
+            data: {
+                id: 1,
+                currency: data.currency || 'INR',
+                timezone: data.timezone || 'Asia/Kolkata',
+            },
         });
     }
 };

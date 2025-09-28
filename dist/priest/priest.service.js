@@ -10,64 +10,91 @@ var __metadata = (this && this.__metadata) || function (k, v) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.PriestService = void 0;
+// src/priest/priest.service.ts
 const common_1 = require("@nestjs/common");
 const prisma_service_1 = require("../prisma.service");
 const date_fns_1 = require("date-fns");
-const fs = require("fs");
-const path = require("path");
+const timezone_util_1 = require("../common/timezone.util");
 let PriestService = class PriestService {
     constructor(prisma) {
         this.prisma = prisma;
+        this.tzUtil = new timezone_util_1.TimezoneUtil(prisma);
     }
     // -------------------------------
     // Priest CRUD
     // -------------------------------
     async createPriest(dto) {
+        const data = {
+            name: dto.name,
+            specialty: dto.specialty ?? null,
+            contactNo: dto.contactNo ?? null,
+            email: dto.email ?? null,
+            address: dto.address ?? null,
+            languages: dto.languages ?? [],
+            qualifications: dto.qualifications ?? [],
+        };
+        if (!dto.clearFeaturedMedia && typeof dto.featuredMediaId === 'number') {
+            ;
+            data.featuredMedia = { connect: { id: dto.featuredMediaId } };
+        }
         return this.prisma.priest.create({
-            data: {
-                name: dto.name,
-                specialty: dto.specialty ?? null,
-                photo: dto.photo ?? null,
-                contactNo: dto.contactNo ?? null,
-                email: dto.email ?? null,
-                address: dto.address ?? null,
-                languages: dto.languages ?? [],
-                qualifications: dto.qualifications ?? [],
-            }
+            data,
+            include: { featuredMedia: true },
         });
-    }
-    async savePhotoAndGetUrl(file) {
-        const uploadsDir = path.join(__dirname, '..', '..', 'uploads');
-        if (!fs.existsSync(uploadsDir))
-            fs.mkdirSync(uploadsDir);
-        const fileName = Date.now() + '-' + file.originalname.replace(/\s+/g, '_');
-        const filePath = path.join(uploadsDir, fileName);
-        fs.writeFileSync(filePath, file.buffer);
-        return `/uploads/${fileName}`;
     }
     async getAllPriests() {
-        return this.prisma.priest.findMany({ include: { slots: true, bookings: true } });
+        const list = await this.prisma.priest.findMany({
+            include: { slots: true, bookings: true, featuredMedia: true },
+            orderBy: { id: 'desc' },
+        });
+        // Convert slots back to configured timezone
+        return Promise.all(list.map(async (p) => ({
+            ...p,
+            slots: await Promise.all(p.slots.map(async (s) => ({
+                ...s,
+                start: await this.tzUtil.fromUTC(s.start),
+                end: await this.tzUtil.fromUTC(s.end),
+                date: s.date ? await this.tzUtil.fromUTC(s.date) : null,
+            }))),
+        })));
     }
     async getPriest(id) {
-        return this.prisma.priest.findUnique({
+        const p = await this.prisma.priest.findUnique({
             where: { id },
-            include: { slots: true, bookings: true }
+            include: { slots: true, bookings: true, featuredMedia: true },
         });
+        if (!p)
+            return null;
+        return {
+            ...p,
+            slots: await Promise.all(p.slots.map(async (s) => ({
+                ...s,
+                start: await this.tzUtil.fromUTC(s.start),
+                end: await this.tzUtil.fromUTC(s.end),
+                date: s.date ? await this.tzUtil.fromUTC(s.date) : null,
+            }))),
+        };
     }
     async updatePriest(id, dto) {
         const data = {
             ...(dto.name !== undefined && { name: dto.name }),
             ...(dto.specialty !== undefined && { specialty: dto.specialty }),
-            ...(dto.photo !== undefined && { photo: dto.photo }),
             ...(dto.contactNo !== undefined && { contactNo: dto.contactNo }),
             ...(dto.email !== undefined && { email: dto.email }),
             ...(dto.address !== undefined && { address: dto.address }),
             ...(dto.languages !== undefined && { languages: dto.languages }),
             ...(dto.qualifications !== undefined && { qualifications: dto.qualifications }),
         };
+        if (dto.clearFeaturedMedia) {
+            Object.assign(data, { featuredMedia: { disconnect: true } });
+        }
+        else if (typeof dto.featuredMediaId === 'number') {
+            Object.assign(data, { featuredMedia: { connect: { id: dto.featuredMediaId } } });
+        }
         return this.prisma.priest.update({
             where: { id },
-            data
+            data,
+            include: { featuredMedia: true },
         });
     }
     async deletePriest(id) {
@@ -77,91 +104,95 @@ let PriestService = class PriestService {
     // AvailabilitySlot CRUD
     // -------------------------------
     async createSlot(dto) {
-        // 1️⃣ Only enforce overlap-check for non-disabled slots
+        const startUTC = await this.tzUtil.toUTC(dto.start);
+        const endUTC = await this.tzUtil.toUTC(dto.end);
+        const dateUTC = dto.date ? await this.tzUtil.toUTC(dto.date) : null;
         if (!dto.disabled) {
             const overlap = await this.prisma.availabilitySlot.findFirst({
                 where: {
                     priestId: dto.priestId,
-                    disabled: false, // ignore any already-disabled slots
-                    start: { lte: new Date(dto.end) },
-                    end: { gte: new Date(dto.start) },
-                }
+                    disabled: false,
+                    start: { lte: endUTC },
+                    end: { gte: startUTC },
+                },
             });
-            if (overlap) {
+            if (overlap)
                 throw new common_1.BadRequestException('Conflicting slot already exists.');
-            }
         }
-        // 2️⃣ Create regardless of disabled flag
-        return this.prisma.availabilitySlot.create({
+        const created = await this.prisma.availabilitySlot.create({
             data: {
                 priestId: dto.priestId,
-                start: new Date(dto.start),
-                end: new Date(dto.end),
+                start: startUTC,
+                end: endUTC,
                 disabled: dto.disabled,
                 type: dto.type,
-                ...(dto.date && { date: new Date(dto.date) }),
+                ...(dateUTC && { date: dateUTC }),
                 ...(dto.daysOfWeek && { daysOfWeek: dto.daysOfWeek }),
-            }
+            },
         });
+        return {
+            ...created,
+            start: await this.tzUtil.fromUTC(created.start),
+            end: await this.tzUtil.fromUTC(created.end),
+            date: created.date ? await this.tzUtil.fromUTC(created.date) : null,
+        };
     }
     async getSlotsForPriest(priestId) {
-        return this.prisma.availabilitySlot.findMany({
-            where: { priestId }
-        });
+        const list = await this.prisma.availabilitySlot.findMany({ where: { priestId } });
+        return Promise.all(list.map(async (s) => ({
+            ...s,
+            start: await this.tzUtil.fromUTC(s.start),
+            end: await this.tzUtil.fromUTC(s.end),
+            date: s.date ? await this.tzUtil.fromUTC(s.date) : null,
+        })));
     }
     async updateSlot(id, dto) {
         const data = {
             ...(dto.priestId !== undefined && { priestId: dto.priestId }),
-            ...(dto.start !== undefined && { start: new Date(dto.start) }),
-            ...(dto.end !== undefined && { end: new Date(dto.end) }),
+            ...(dto.start !== undefined && { start: await this.tzUtil.toUTC(dto.start) }),
+            ...(dto.end !== undefined && { end: await this.tzUtil.toUTC(dto.end) }),
             ...(dto.disabled !== undefined && { disabled: dto.disabled }),
             ...(dto.type !== undefined && { type: dto.type }),
             ...(dto.daysOfWeek !== undefined && { daysOfWeek: dto.daysOfWeek }),
+            ...(dto.date !== undefined && { date: await this.tzUtil.toUTC(dto.date) }),
         };
-        return this.prisma.availabilitySlot.update({
-            where: { id },
-            data
-        });
+        const updated = await this.prisma.availabilitySlot.update({ where: { id }, data });
+        return {
+            ...updated,
+            start: await this.tzUtil.fromUTC(updated.start),
+            end: await this.tzUtil.fromUTC(updated.end),
+            date: updated.date ? await this.tzUtil.fromUTC(updated.date) : null,
+        };
     }
     async getSlotsForPriestInRange(priestId, from, to) {
-        return this.prisma.availabilitySlot.findMany({
-            where: {
-                priestId,
-                start: { gte: from },
-                end: { lte: to }
-            },
-            orderBy: { start: 'asc' }
+        const list = await this.prisma.availabilitySlot.findMany({
+            where: { priestId, start: { gte: from }, end: { lte: to } },
+            orderBy: { start: 'asc' },
         });
+        return Promise.all(list.map(async (s) => ({
+            ...s,
+            start: await this.tzUtil.fromUTC(s.start),
+            end: await this.tzUtil.fromUTC(s.end),
+            date: s.date ? await this.tzUtil.fromUTC(s.date) : null,
+        })));
     }
     async deleteSlot(id) {
         return this.prisma.availabilitySlot.delete({ where: { id } });
     }
+    // -------------------------------
+    // Availability finder
+    // -------------------------------
     async getAvailableChunks(priestId, bookingDate, totalMinutes) {
-        const dateObj = new Date(bookingDate);
-        const weekdayShort = (0, date_fns_1.format)(dateObj, 'EEE'); // "Mon", "Tue", etc.
-        // 1️⃣ Fetch AVAILABLE slots (weekly + one-offs)
+        const dateObj = await this.tzUtil.toUTC(bookingDate); // interpret in configured TZ → UTC
+        const weekdayShort = (0, date_fns_1.format)(new Date(bookingDate), 'EEE'); // still local label for recurring
         const availSlots = await this.prisma.availabilitySlot.findMany({
-            where: {
-                priestId,
-                disabled: false,
-                OR: [
-                    { date: dateObj },
-                    { date: null }
-                ]
-            }
+            where: { priestId, disabled: false, OR: [{ date: dateObj }, { date: null }] },
         });
-        // 2️⃣ Fetch one-off BUSY/HOLIDAY overrides for that exact date
         const busySlots = await this.prisma.availabilitySlot.findMany({
-            where: {
-                priestId,
-                disabled: true,
-                date: dateObj
-            }
+            where: { priestId, disabled: true, date: dateObj },
         });
-        // 3️⃣ Build all possible chunks from your AVAILABLE slots
         const validChunks = [];
         for (const slot of availSlots) {
-            // Skip weekly slots when weekday doesn’t match
             if (!slot.date) {
                 const days = Array.isArray(slot.daysOfWeek)
                     ? slot.daysOfWeek
@@ -171,47 +202,34 @@ let PriestService = class PriestService {
                 if (!days.includes(weekdayShort))
                     continue;
             }
-            // Anchor that slot’s time-of-day on the booking date
+            // reconstruct local-day slots from stored UTC times
             const start = new Date(bookingDate);
-            start.setHours(slot.start.getHours(), slot.start.getMinutes(), 0, 0);
+            start.setHours(slot.start.getUTCHours(), slot.start.getUTCMinutes(), 0, 0);
             const end = new Date(bookingDate);
-            end.setHours(slot.end.getHours(), slot.end.getMinutes(), 0, 0);
-            // overnight?
+            end.setHours(slot.end.getUTCHours(), slot.end.getUTCMinutes(), 0, 0);
             if (end <= start)
                 end.setDate(end.getDate() + 1);
-            // Slice into duration‐sized chunks
             const chunks = this.generateChunks(start, end, totalMinutes);
-            validChunks.push(...chunks.map(c => ({
-                ...c,
-                priestId: slot.priestId,
-                type: slot.type
-            })));
+            validChunks.push(...chunks.map(c => ({ ...c, priestId: slot.priestId, type: slot.type })));
         }
-        // 4️⃣ Build concrete ranges for your BUSY overrides
         const busyRanges = busySlots.map(slot => {
             const bs = new Date(bookingDate);
-            bs.setHours(slot.start.getHours(), slot.start.getMinutes(), 0, 0);
+            bs.setHours(slot.start.getUTCHours(), slot.start.getUTCMinutes(), 0, 0);
             const be = new Date(bookingDate);
-            be.setHours(slot.end.getHours(), slot.end.getMinutes(), 0, 0);
+            be.setHours(slot.end.getUTCHours(), slot.end.getUTCMinutes(), 0, 0);
             if (be <= bs)
                 be.setDate(be.getDate() + 1);
             return { start: bs, end: be };
         });
-        // 5️⃣ Exclude any chunk that overlaps a confirmed booking or a busy override
-        const existing = await this.prisma.booking.findMany({
-            where: { priestId, bookingDate: dateObj }
-        });
-        const available = validChunks.filter(chunk => 
-        // no booking overlap
-        !existing.some(b => this.overlaps(chunk.start, chunk.end, b.start, b.end)) &&
-            // no busy override overlap
+        const existing = await this.prisma.booking.findMany({ where: { priestId, bookingDate: dateObj } });
+        const available = validChunks.filter(chunk => !existing.some(b => this.overlaps(chunk.start, chunk.end, b.start, b.end)) &&
             !busyRanges.some(b => this.overlaps(chunk.start, chunk.end, b.start, b.end)));
-        console.log('🔍 AVAILABLE SLOTS:', availSlots.length);
-        console.log('🔍 BUSY OVERRIDES:', busySlots.length);
-        console.log('🔍 RAW CHUNKS:', validChunks.length);
-        console.log('🔍 BUSY RANGES:', busyRanges);
-        console.log('✅ RETURNED CHUNKS:', available.length);
-        return available;
+        // Convert back to timezone strings for frontend
+        return Promise.all(available.map(async (c) => ({
+            ...c,
+            start: await this.tzUtil.fromUTC(c.start),
+            end: await this.tzUtil.fromUTC(c.end),
+        })));
     }
     generateChunks(start, end, durationMin) {
         const chunks = [];
@@ -219,7 +237,7 @@ let PriestService = class PriestService {
         while ((0, date_fns_1.addMinutes)(current, durationMin) <= end) {
             const chunkEnd = (0, date_fns_1.addMinutes)(current, durationMin);
             chunks.push({ start: new Date(current), end: chunkEnd });
-            current = chunkEnd; // move to the end of previous chunk
+            current = chunkEnd;
         }
         return chunks;
     }

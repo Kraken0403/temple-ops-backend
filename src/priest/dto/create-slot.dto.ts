@@ -6,35 +6,37 @@ import {
   IsOptional,
   IsArray,
   ArrayNotEmpty,
-  IsString
-} from 'class-validator';
-import { SlotType } from '@prisma/client';
+  IsString,
+} from 'class-validator'
+import { SlotType } from '@prisma/client'
 
 export class CreateSlotDto {
   @IsInt()
-  priestId!: number;
+  priestId!: number
 
+  /** Local start time (ISO string in configured timezone) */
   @IsDateString()
-  start!: string;
+  start!: string
 
+  /** Local end time (ISO string in configured timezone) */
   @IsDateString()
-  end!: string;
+  end!: string
 
-  /** ← NEW: date for one-off slots */
+  /** One-off slot date (optional, ISO string in configured timezone) */
   @IsOptional()
   @IsDateString()
-  date?: string;
+  date?: string
 
   @IsBoolean()
-  disabled!: boolean;
+  disabled!: boolean
 
   @IsEnum(SlotType)
-  type!: SlotType;
+  type!: SlotType
 
-  /** Optional: list of weekdays for a recurring slot */
+  /** Optional: list of weekdays for recurring slot */
   @IsOptional()
   @IsArray()
   @ArrayNotEmpty()
   @IsString({ each: true })
-  daysOfWeek?: string[];
+  daysOfWeek?: string[]
 }

@@ -5,14 +5,12 @@
   <title>Booking Confirmation</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <style>
-    /* Client resets */
     body,table,td,a{ -webkit-text-size-adjust:100%; -ms-text-size-adjust:100% }
     table,td{ mso-table-lspace:0pt; mso-table-rspace:0pt }
     img{ -ms-interpolation-mode:bicubic; border:0; outline:none; text-decoration:none }
     table{ border-collapse:collapse !important }
     body{ margin:0 !important; padding:0 !important; width:100% !important; background:#f9fafb; }
 
-    /* Responsive */
     @media screen and (max-width:600px){
       .container{ width:100% !important }
       .px{ padding-left:16px !important; padding-right:16px !important }
@@ -21,8 +19,7 @@
       .pill{ width:100% !important; display:block !important; margin-bottom:12px !important }
     }
 
-    /* Theme */
-    .brand-bg{ background:#b71c1c }      /* primary red */
+    .brand-bg{ background:#b71c1c }
     .brand{ color:#b71c1c }
     .btn{ background:#b71c1c; color:#fff !important; text-decoration:none; padding:12px 18px; border-radius:8px; display:inline-block; font-weight:bold }
     .card{ background:#fff; border:1px solid #e5e7eb; border-radius:14px }
@@ -33,7 +30,6 @@
     .li{ font-size:14px; line-height:1.7; color:#374151 }
     .divider{ height:1px; background:#e5e7eb }
 
-    /* Pills / badges */
     .pill{ background:#fff5f5; border:1px solid #f3caca; border-radius:12px; padding:12px 14px }
     .label{ font-size:12px; color:#6b7280; display:block; margin-bottom:4px; letter-spacing:.2px; }
     .value{ font-size:14px; color:#111827; font-weight:600 }
@@ -41,7 +37,7 @@
 </head>
 <body style="font-family:Arial,Helvetica,sans-serif;">
 
-  <!-- Header / App Bar -->
+  <!-- Header -->
   <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
     <tr>
       <td class="brand-bg" style="padding:14px 24px; text-align:center;">
@@ -52,20 +48,24 @@
     </tr>
   </table>
 
-  <!-- Hero Confirmation Band -->
+  <!-- Hero Band -->
   <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
     <tr>
       <td align="center" style="padding:0 16px;">
         <table role="presentation" width="600" class="container" style="border-radius:14px; overflow:hidden;">
           <tr>
             <td class="brand-bg hero-pad" style="padding:28px 32px; color:#fff; text-align:center;">
-              <div style="font-size:12px; opacity:.9; letter-spacing:.3px;">E-Ticket · Booking ID: <strong>#{{bookingId}}</strong></div>
-              <h1 style="margin:8px 0 4px; font-size:24px; line-height:1.25; color:#fff;">Your Booking is Confirmed</h1>
+              <div style="font-size:12px; opacity:.9; letter-spacing:.3px;">
+                E-Ticket · Booking ID: <strong>#{{bookingId}}</strong>
+              </div>
+              <h1 style="margin:8px 0 4px; font-size:24px; line-height:1.25; color:#fff;">
+                Your Booking is Confirmed
+              </h1>
               <div style="font-size:13px; opacity:.9;">
                 Thank you, {{userName}}. We’re set to serve you a smooth experience.
               </div>
 
-              <!-- Two key pills (Date / Time) -->
+              <!-- Pills -->
               <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-top:18px;">
                 <tr>
                   <td class="pill stack" style="width:50%; text-align:left;">
@@ -82,35 +82,68 @@
             </td>
           </tr>
 
-          <!-- White body card under hero -->
+          <!-- Card -->
           <tr>
             <td style="background:#fff; padding:0;">
               <table role="presentation" width="100%" class="card" style="border:none; border-radius:0 0 14px 14px;">
-                <!-- Title -->
                 <tr>
                   <td style="padding:20px 24px 8px 24px;">
                     <h2 class="h2 brand" style="margin:0; font-weight:700;">{{poojaName}}</h2>
-                    <p class="p" style="margin-top:6px;">Below are your booking details.</p>
+                    <p class="p" style="margin-top:6px;">Here are your booking details:</p>
                   </td>
                 </tr>
 
                 <tr><td class="divider"></td></tr>
 
-                <!-- Details list -->
+                <!-- Details -->
                 <tr>
                   <td style="padding:16px 24px;">
-                    <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
-                      <tr>
-                        <td style="vertical-align:top;">
-                          <ul style="padding:0; margin:0; list-style:none; font-size:14px; line-height:1.7;">
-                            {{#if venueText}}
-                              <li class="li"><strong>Venue:</strong> {{venueText}}</li>
-                            {{/if}}
-                            <li class="li"><strong>Status:</strong> {{status}}</li>
-                          </ul>
-                        </td>
-                      </tr>
-                    </table>
+                    <ul style="padding:0; margin:0; list-style:none; font-size:14px; line-height:1.7;">
+                      <li class="li"><strong>Booking ID:</strong> #{{bookingId}}</li>
+                      <li class="li"><strong>Status:</strong> {{status}}</li>
+                      <li class="li"><strong>Created At:</strong> {{createdAtText}}</li>
+
+                      <li class="li"><strong>Name:</strong> {{userName}}</li>
+                      <li class="li"><strong>Email:</strong> {{userEmail}}</li>
+                      <li class="li"><strong>Phone:</strong> {{userPhone}}</li>
+
+                      {{#if venueText}}
+                        <li class="li"><strong>Venue:</strong> {{venueText}}</li>
+                      {{/if}}
+                      {{#if outsideVenueAddress}}
+                        <li class="li"><strong>Venue Address:</strong> {{outsideVenueAddress}}</li>
+                      {{/if}}
+                      {{#if mapLink}}
+                        <li class="li"><strong>Map:</strong> <a href="{{mapLink}}" style="color:#b71c1c; text-decoration:underline;">View Map</a></li>
+                      {{/if}}
+                      {{#if priestName}}
+                        <li class="li"><strong>Priest:</strong> {{priestName}}</li>
+                      {{/if}}
+
+                      {{!-- <li class="li"><strong>Seats Booked:</strong> {{seatsBooked}}</li> --}}
+                      {{!-- <li class="li"><strong>Remaining Seats:</strong> {{remainingSeats}}</li> --}}
+
+                      {{#if paymentStatus}}
+                        <li class="li"><strong>Payment Status:</strong> {{paymentStatus}}</li>
+                        <li class="li"><strong>Amount Paid:</strong> {{amountPaid}} {{currency}}</li>
+                        <li class="li"><strong>Payment Method:</strong> {{paymentMethod}}</li>
+                      {{/if}}
+
+                      {{#if sponsorshipName}}
+                        <li class="li"><strong>Sponsorship:</strong> {{sponsorshipName}}</li>
+                      {{/if}}
+
+                      {{#if notes}}
+                        <li class="li"><strong>Notes:</strong> {{notes}}</li>
+                      {{/if}}
+
+                      {{#if organizer}}
+                        <li class="li"><strong>Organizer:</strong> {{organizer}}</li>
+                      {{/if}}
+                      {{#if contactInfo}}
+                        <li class="li"><strong>Contact Info:</strong> {{contactInfo}}</li>
+                      {{/if}}
+                    </ul>
                   </td>
                 </tr>
 
@@ -131,7 +164,7 @@
     </tr>
   </table>
 
-  <!-- Fine print -->
+  <!-- Footer -->
   <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
     <tr>
       <td style="padding:16px 24px; text-align:center;" class="muted">

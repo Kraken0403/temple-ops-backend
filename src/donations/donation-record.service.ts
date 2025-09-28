@@ -3,15 +3,18 @@ import { Injectable, NotFoundException } from '@nestjs/common'
 import { PrismaService } from '../prisma.service'
 import { CreateDonationRecordDto } from './dto/create-donation-record.dto'
 import { UpdateDonationRecordDto } from './dto/update-donation-record.dto'
-
+import { NotificationsService } from '../notifications/notifications.service' 
 @Injectable()
 export class DonationRecordService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private notifications: NotificationsService,
+  ) {}
 
   async create(dto: CreateDonationRecordDto) {
     const item = await this.ensureItem(dto.donationItemId)
 
-    return this.prisma.donationRecord.create({
+    const donation = await this.prisma.donationRecord.create({
       data: {
         donationItemId:     dto.donationItemId,
         donorName:          dto.donorName,
@@ -21,7 +24,12 @@ export class DonationRecordService {
         itemNameAtDonation: item.name,   // snapshot
       },
       include: { donationItem: true },
-    })
+    });
+
+    // 👇 send email notification
+    await this.notifications.sendDonationReceived(donation.id);
+
+    return donation;
   }
 
   findAll() {

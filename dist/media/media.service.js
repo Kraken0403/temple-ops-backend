@@ -24,6 +24,7 @@ function mimeFor(ext) {
         case '.webp': return 'image/webp';
         case '.bmp': return 'image/bmp';
         case '.tiff': return 'image/tiff';
+        case '.pdf': return 'application/pdf';
         default: return 'image/jpeg';
     }
 }
@@ -119,13 +120,17 @@ let MediaService = class MediaService {
     async saveUploadedFile(file) {
         if (!file)
             throw new common_1.BadRequestException('File is required');
-        // Multer wrote file to /uploads/YY/MM/<filename>
-        const dest = file.destination || media_storage_1.uploadRoot;
-        const rel = dest.replace(media_storage_1.uploadRoot, '').replace(/\\/g, '/');
-        const url = `/uploads${rel}/${file.filename}`.replace(/\/+/, '/uploads/');
+        // Where multer stored it (e.g. <root>/uploads/2025/09)
+        const destAbs = file.destination || media_storage_1.uploadRoot;
+        // Compute a POSIX relative folder like "2025/09"
+        let relDir = path.relative(media_storage_1.uploadRoot, destAbs).replace(/\\/g, '/');
+        // Remove any accidental leading "uploads/" segments just in case
+        relDir = relDir.replace(/^\/?(?:uploads\/)+/i, '');
+        // Build a single, normalized URL: "/uploads/2025/09/filename.ext"
+        const urlPath = path.posix.join('/uploads', relDir, file.filename);
         return this.prisma.mediaAsset.create({
             data: {
-                url,
+                url: urlPath, // <-- no duplication
                 filename: file.originalname || file.filename,
                 mimeType: file.mimetype,
                 sizeBytes: file.size,

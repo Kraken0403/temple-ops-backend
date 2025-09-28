@@ -2,41 +2,89 @@
 import { Injectable, Logger } from '@nestjs/common'
 import { MailerService } from '@nestjs-modules/mailer'
 import { PrismaService } from '../prisma.service'
+import { TimezoneUtil } from '../common/timezone.util'
 
-// If your deployment is in India, default to Asia/Kolkata:
-const TZ = process.env.APP_TZ || 'Asia/Kolkata'
 const APP_NAME = process.env.APP_NAME || 'Booking'
 const APP_URL  = process.env.APP_URL  || 'https://example.com'
-
-function toDateText(d?: Date | string | null, tz = TZ) {
-  if (!d) return ''
-  const dt = typeof d === 'string' ? new Date(d) : d
-  return dt.toLocaleDateString('en-IN', { timeZone: tz, weekday:'short', day:'2-digit', month:'short', year:'numeric' })
-}
-function toTimeText(d?: Date | string | null, tz = TZ) {
-  if (!d) return ''
-  const dt = typeof d === 'string' ? new Date(d) : d
-  return dt.toLocaleTimeString('en-IN', { timeZone: tz, hour: '2-digit', minute: '2-digit' })
-}
-function venueLine(addr?: string|null, state?: string|null, zip?: string|null) {
-  const parts = [addr?.trim(), state?.trim(), zip?.trim()].filter(Boolean)
-  return parts.join(', ')
-}
 
 @Injectable()
 export class NotificationsService {
   private readonly logger = new Logger(NotificationsService.name)
+  private tzUtil: TimezoneUtil
 
   constructor(
     private readonly mailer: MailerService,
     private readonly prisma: PrismaService,
-  ) {}
+  ) {
+    this.tzUtil = new TimezoneUtil(this.prisma)
+  }
+
+  private settingsCache: { currency: string; timezone: string } | null = null
+  private async getSettings() {
+    if (this.settingsCache) return this.settingsCache
+    const settings = await this.prisma.settings.findUnique({ where: { id: 1 } })
+    this.settingsCache = {
+      currency: settings?.currency || process.env.CURRENCY || 'INR',
+      timezone: settings?.timezone || 'Asia/Kolkata',
+    }
+    return this.settingsCache
+  }
+
+  private async buildBookingCtx(booking: any) {
+    const settings = await this.getSettings()
+
+    const bookingDateText = await this.tzUtil.format(booking.bookingDate, 'EEE, dd LLL yyyy')
+    const startTimeText   = await this.tzUtil.format(booking.start, 'hh:mm a')
+    const endTimeText     = await this.tzUtil.format(booking.end, 'hh:mm a')
+
+    return {
+      bookingId: booking.id,
+      status: booking.status,
+      poojaName: booking.poojaNameAtBooking || booking.pooja?.name,
+      priestName: booking.priestNameAtBooking || booking.priest?.name || '',
+
+      userName: booking.userName || booking.user?.email || 'Devotee',
+      userEmail: booking.userEmail || booking.user?.email || '',
+      userPhone: booking.userPhone || '',
+
+      bookingDateText,
+      startTimeText,
+      endTimeText,
+
+      venueText: this.venueLine(booking.venueAddress, booking.venueState, booking.venueZip),
+
+      amount: booking.amountAtBooking,
+      currency: settings.currency,
+
+      durationMin: booking.pooja?.durationMin,
+      prepTimeMin: booking.pooja?.prepTimeMin,
+      bufferMin: booking.pooja?.bufferMin,
+      includeFood: booking.pooja?.includeFood,
+      includeHall: booking.pooja?.includeHall,
+      materials: booking.pooja?.materials,
+      notes: booking.pooja?.notes,
+
+      manageUrl: `${APP_URL}/my/bookings/${booking.id}`,
+      adminUrl:  `${APP_URL}/admin/bookings/${booking.id}`,
+
+      appName: APP_NAME,
+      appUrl: APP_URL,
+      year: new Date().getFullYear(),
+    }
+  }
+
+  private venueLine(addr?: string|null, state?: string|null, zip?: string|null) {
+    const parts = [addr?.trim(), state?.trim(), zip?.trim()].filter(Boolean)
+    return parts.join(', ')
+  }
 
   private async getAdminRecipients(): Promise<string[]> {
     try {
       const settings = await this.prisma.settings.findUnique({ where: { id: 1 } })
       const arr = (settings as any)?.notificationEmails
-      if (Array.isArray(arr)) return arr.filter(x => typeof x === 'string' && x.trim().length > 0)
+      if (Array.isArray(arr)) {
+        return arr.filter(x => typeof x === 'string' && x.trim().length > 0)
+      }
     } catch (err) {
       this.logErr('Failed to read Settings.notificationEmails', err)
     }
@@ -64,12 +112,7 @@ export class NotificationsService {
         to,
         subject: opts.subject,
         template: opts.template,
-        context: {
-          ...opts.context,
-          appName: APP_NAME,
-          appUrl:  APP_URL,
-          year: new Date().getFullYear(),
-        },
+        context: opts.context,
         html: opts.html,
       })
     } catch (e) {
@@ -87,7 +130,7 @@ export class NotificationsService {
   }
 
   // ─────────────────────────────────────────────
-  // BOOKINGS (Pooja) — create/update/cancel
+  // BOOKINGS (Poojas)
   // ─────────────────────────────────────────────
 
   async sendBookingCreated(bookingId: number) {
@@ -95,31 +138,17 @@ export class NotificationsService {
       where: { id: bookingId },
       include: { pooja: true, priest: true, user: true },
     })
-    if (!booking) { this.logger.warn(`Booking ${bookingId} not found`); return }
+    if (!booking) return
 
-    const ctx = {
-      bookingId: booking.id,
-      status: booking.status,
-      poojaName: booking.pooja?.name,
-      priestName: booking.priest?.name || '',
-      userName: booking.userName || booking.user?.email || 'Devotee',
-      userEmail: booking.userEmail || booking.user?.email || '',
-      userPhone: booking.userPhone || '',
-      bookingDateText: toDateText(booking.bookingDate),
-      startTimeText:   toTimeText(booking.start),
-      endTimeText:     toTimeText(booking.end),
-      venueText: venueLine(booking.venueAddress, booking.venueState, booking.venueZip),
-      manageUrl: `${APP_URL}/my/bookings/${booking.id}`,
-      adminUrl:  `${APP_URL}/admin/bookings/${booking.id}`,
-    }
+    const ctx = await this.buildBookingCtx(booking)
 
     const userTo   = (booking.userEmail || booking.user?.email || '').trim() || undefined
     const priestTo = (booking.priest?.email || '').trim() || undefined
     const adminTo  = await this.getAdminRecipients()
 
     await this.sendIf({ to: userTo,   subject: 'Your booking is confirmed', template: 'booking/booking-user',   context: ctx })
-    await this.sendIf({ to: priestTo, subject: `New booking assigned: ${booking.pooja?.name || ''}`, template: 'booking/booking-priest', context: ctx })
-    await this.sendIf({ to: adminTo,  subject: `New booking #${booking.id} - ${booking.pooja?.name || 'Pooja'}`, template: 'booking/booking-admin', context: ctx })
+    await this.sendIf({ to: priestTo, subject: `New booking assigned: ${ctx.poojaName}`, template: 'booking/booking-priest', context: ctx })
+    await this.sendIf({ to: adminTo,  subject: `New booking #${ctx.bookingId} - ${ctx.poojaName}`, template: 'booking/booking-admin', context: ctx })
   }
 
   async sendBookingUpdated(bookingId: number) {
@@ -128,28 +157,16 @@ export class NotificationsService {
       include: { pooja: true, priest: true, user: true },
     })
     if (!booking) return
-    const ctx = {
-      bookingId: booking.id,
-      status: booking.status,
-      poojaName: booking.pooja?.name,
-      priestName: booking.priest?.name || '',
-      userName: booking.userName || booking.user?.email || 'Devotee',
-      userEmail: booking.userEmail || booking.user?.email || '',
-      userPhone: booking.userPhone || '',
-      bookingDateText: toDateText(booking.bookingDate),
-      startTimeText:   toTimeText(booking.start),
-      endTimeText:     toTimeText(booking.end),
-      venueText: venueLine(booking.venueAddress, booking.venueState, booking.venueZip),
-      manageUrl: `${APP_URL}/my/bookings/${booking.id}`,
-      adminUrl:  `${APP_URL}/admin/bookings/${booking.id}`,
-    }
+
+    const ctx = await this.buildBookingCtx(booking)
+
     const userTo   = (booking.userEmail || booking.user?.email || '').trim() || undefined
     const priestTo = (booking.priest?.email || '').trim() || undefined
     const adminTo  = await this.getAdminRecipients()
 
     await this.sendIf({ to: userTo,   subject: 'Your booking was updated', template: 'booking/booking-updated-user',   context: ctx })
     await this.sendIf({ to: priestTo, subject: 'A booking assigned to you was updated', template: 'booking/booking-updated-priest', context: ctx })
-    await this.sendIf({ to: adminTo,  subject: `Booking #${booking.id} updated`, template: 'booking/booking-updated-admin', context: ctx })
+    await this.sendIf({ to: adminTo,  subject: `Booking #${ctx.bookingId} updated`, template: 'booking/booking-updated-admin', context: ctx })
   }
 
   async sendBookingCanceled(bookingId: number) {
@@ -159,21 +176,7 @@ export class NotificationsService {
     })
     if (!booking) return
 
-    const ctx = {
-      bookingId: booking.id,
-      status: booking.status,
-      poojaName: booking.pooja?.name,
-      priestName: booking.priest?.name || '',
-      userName: booking.userName || booking.user?.email || 'Devotee',
-      userEmail: booking.userEmail || booking.user?.email || '',
-      userPhone: booking.userPhone || '',
-      bookingDateText: toDateText(booking.bookingDate),
-      startTimeText:   toTimeText(booking.start),
-      endTimeText:     toTimeText(booking.end),
-      venueText: venueLine(booking.venueAddress, booking.venueState, booking.venueZip),
-      manageUrl: `${APP_URL}/my/bookings/${booking.id}`,
-      adminUrl:  `${APP_URL}/admin/bookings/${booking.id}`,
-    }
+    const ctx = await this.buildBookingCtx(booking)
 
     const userTo   = (booking.userEmail || booking.user?.email || '').trim() || undefined
     const priestTo = (booking.priest?.email || '').trim() || undefined
@@ -181,141 +184,239 @@ export class NotificationsService {
 
     await this.sendIf({ to: userTo,   subject: 'Your booking was canceled', template: 'booking/booking-canceled-user',   context: ctx })
     await this.sendIf({ to: priestTo, subject: 'A booking assigned to you was canceled', template: 'booking/booking-canceled-priest', context: ctx })
-    await this.sendIf({ to: adminTo,  subject: `Booking #${booking.id} canceled`, template: 'booking/booking-canceled-admin', context: ctx })
+    await this.sendIf({ to: adminTo,  subject: `Booking #${ctx.bookingId} canceled`, template: 'booking/booking-canceled-admin', context: ctx })
   }
 
-  // ─────────────────────────────────────────────
-  // EVENTS — event booking confirmations
-  // ─────────────────────────────────────────────
-
-  /**
-   * Notify on new EventBooking
-   */
-  async sendEventBookingCreated(eventBookingId: number) {
-    const eb = await this.prisma.eventBooking.findUnique({
-      where: { id: eventBookingId },
-      include: { event: true, user: true },
-    })
-    if (!eb) { this.logger.warn(`EventBooking ${eventBookingId} not found`); return }
-
-    const event = eb.event
-    const userName = eb.userName || eb.user?.email || 'Attendee'
-    const userEmail = eb.userEmail || eb.user?.email || ''
-    const userPhone = eb.userPhone || ''
-
-    const eventDateText = toDateText(event?.date)
-    const startText     = toTimeText(event?.startTime)
-    const endText       = toTimeText(event?.endTime)
-    const eventTimeText = startText && endText ? `${startText} – ${endText}` : (startText || '')
-    const venue = event?.venue || 'TBA'
-    const ticketsText = eb.pax ? `${eb.pax} ${eb.pax > 1 ? 'tickets' : 'ticket'}` : ''
-    const priceText   = event?.price != null ? `${event.price} ${process.env.CURRENCY || 'INR'}` : ''
-
-    const ctx = {
-      eventBookingId: eb.id,
-      eventName: event?.name || 'Event',
-      eventDateText,
-      eventTimeText,
-      venue,
-      userName,
-      userEmail,
-      userPhone,
-      ticketsText,
-      priceText,
-      eventUrl: `${APP_URL}/events/${event?.id || ''}`,
-      adminUrl: `${APP_URL}/admin/events/${event?.id || ''}`,
-      appName: APP_NAME,
-      appUrl: APP_URL,
-      year: new Date().getFullYear(),
-    }
-
-    const userTo  = userEmail.trim() || undefined
-    const adminTo = await this.getAdminRecipients()
-
-    // Optional organizer email (from Settings.organizerEmails or ENV)
-    const organizerTo = (process.env.EVENTS_NOTIFY_EMAILS || '')
-      .split(',').map(s => s.trim()).filter(Boolean)
-
-    await this.sendIf({ to: userTo,      subject: 'Your event booking is confirmed', template: 'event/event-booking-user',      context: ctx })
-    await this.sendIf({ to: adminTo,     subject: `New event booking #${eb.id} - ${event?.name || 'Event'}`, template: 'event/event-booking-admin', context: ctx })
-    await this.sendIf({ to: organizerTo, subject: `New attendee for ${event?.name || 'Event'}`, template: 'event/event-booking-organizer', context: ctx })
-  }
-
-  // ─────────────────────────────────────────────
-// EVENTS — updated / canceled
+// ─────────────────────────────────────────────
+// EVENTS
 // ─────────────────────────────────────────────
 
-async sendEventBookingUpdated(eventBookingId: number) {
+async sendEventBookingCreated(eventBookingId: number) {
   const eb = await this.prisma.eventBooking.findUnique({
     where: { id: eventBookingId },
-    include: { event: true, user: true },
+    include: { event: { include: { venueRel: true } }, user: true },
   })
   if (!eb) return
 
+  const settings = await this.getSettings()
   const event = eb.event
-  const userName  = eb.userName || eb.user?.email || 'Attendee'
-  const userEmail = eb.userEmail || eb.user?.email || ''
-  const userPhone = eb.userPhone || ''
 
-  const eventDateText = toDateText(event?.date)
-  const startText     = toTimeText(event?.startTime)
-  const endText       = toTimeText(event?.endTime)
-  const eventTimeText = startText && endText ? `${startText} – ${endText}` : (startText || '')
-  const venue         = event?.venue || 'TBA'
-  const ticketsText   = eb.pax ? `${eb.pax} ${eb.pax > 1 ? 'tickets' : 'ticket'}` : ''
-  const priceText     = event?.price != null ? `${event.price} ${process.env.CURRENCY || 'INR'}` : ''
+  const eventDateText = await this.tzUtil.format(event?.date, 'EEE, dd LLL yyyy')
+  const startText     = event?.startTime ? await this.tzUtil.format(event.startTime, 'hh:mm a') : ''
+  const endText       = event?.endTime ? await this.tzUtil.format(event.endTime, 'hh:mm a') : ''
+  const eventTimeText = startText && endText ? `${startText} – ${endText}` : startText || ''
+
+  const venueText = event?.venueRel?.title || event?.venueRel?.address || event?.venue || 'TBA'
 
   const ctx = {
     eventBookingId: eb.id,
     eventName: event?.name || 'Event',
-    eventDateText, eventTimeText, venue,
-    userName, userEmail, userPhone,
-    ticketsText, priceText,
+    eventDateText,
+    eventTimeText,
+    venue: venueText,
+
+    userName: eb.userName || eb.user?.email || 'Attendee',
+    userEmail: eb.userEmail || eb.user?.email || '',
+    userPhone: eb.userPhone || '',
+
+    ticketsText: eb.pax ? `${eb.pax} ${eb.pax > 1 ? 'tickets' : 'ticket'}` : '',
+    priceText: event?.price != null ? `${event.price} ${settings.currency}` : '',
+
     eventUrl: `${APP_URL}/events/${event?.id || ''}`,
     adminUrl: `${APP_URL}/admin/events/${event?.id || ''}`,
+
+    appName: APP_NAME,
+    appUrl: APP_URL,
+    year: new Date().getFullYear(),
   }
 
-  const userTo  = userEmail.trim() || undefined
+  const userTo  = ctx.userEmail?.trim() || undefined
+  const adminTo = await this.getAdminRecipients()
+  const organizerTo = (process.env.EVENTS_NOTIFY_EMAILS || '')
+    .split(',').map(s => s.trim()).filter(Boolean)
+
+  await this.sendIf({ to: userTo,      subject: 'Your event booking is confirmed', template: 'event/booking-event-user', context: ctx })
+  await this.sendIf({ to: adminTo,     subject: `New event booking #${eb.id} - ${ctx.eventName}`, template: 'event/booking-event-admin', context: ctx })
+  await this.sendIf({ to: organizerTo, subject: `New attendee for ${ctx.eventName}`, template: 'event/booking-event-organizer', context: ctx })
+}
+
+async sendEventBookingUpdated(eventBookingId: number) {
+  const eb = await this.prisma.eventBooking.findUnique({
+    where: { id: eventBookingId },
+    include: { event: { include: { venueRel: true } }, user: true },
+  })
+  if (!eb) return
+
+  const settings = await this.getSettings()
+  const event = eb.event
+
+  const eventDateText = await this.tzUtil.format(event?.date, 'EEE, dd LLL yyyy')
+  const startText     = event?.startTime ? await this.tzUtil.format(event.startTime, 'hh:mm a') : ''
+  const endText       = event?.endTime ? await this.tzUtil.format(event.endTime, 'hh:mm a') : ''
+  const eventTimeText = startText && endText ? `${startText} – ${endText}` : startText || ''
+
+  const venueText = event?.venueRel?.title || event?.venueRel?.address || event?.venue || 'TBA'
+
+  const ctx = {
+    eventBookingId: eb.id,
+    eventName: event?.name || 'Event',
+    eventDateText,
+    eventTimeText,
+    venue: venueText,
+
+    userName: eb.userName || eb.user?.email || 'Attendee',
+    userEmail: eb.userEmail || eb.user?.email || '',
+    userPhone: eb.userPhone || '',
+
+    ticketsText: eb.pax ? `${eb.pax} ${eb.pax > 1 ? 'tickets' : 'ticket'}` : '',
+    priceText: event?.price != null ? `${event.price} ${settings.currency}` : '',
+
+    eventUrl: `${APP_URL}/events/${event?.id || ''}`,
+    adminUrl: `${APP_URL}/admin/events/${event?.id || ''}`,
+
+    appName: APP_NAME,
+    appUrl: APP_URL,
+    year: new Date().getFullYear(),
+  }
+
+  const userTo  = ctx.userEmail?.trim() || undefined
   const adminTo = await this.getAdminRecipients()
 
-  await this.sendIf({ to: userTo,  subject: 'Your event booking was updated', template: 'event/event-booking-user',   context: ctx })
-  await this.sendIf({ to: adminTo, subject: `Event booking #${eb.id} updated - ${event?.name || 'Event'}`, template: 'event/event-booking-admin', context: ctx })
+  await this.sendIf({ to: userTo,  subject: 'Your event booking was updated', template: 'event/booking-event-updated-user', context: ctx })
+  await this.sendIf({ to: adminTo, subject: `Event booking #${eb.id} updated - ${ctx.eventName}`, template: 'event/booking-event-updated-admin', context: ctx })
 }
 
 async sendEventBookingCanceled(eventBookingId: number) {
   const eb = await this.prisma.eventBooking.findUnique({
     where: { id: eventBookingId },
-    include: { event: true, user: true },
+    include: { event: { include: { venueRel: true } }, user: true },
   })
   if (!eb) return
 
+  const settings = await this.getSettings()
   const event = eb.event
-  const userName  = eb.userName || eb.user?.email || 'Attendee'
-  const userEmail = eb.userEmail || eb.user?.email || ''
-  const userPhone = eb.userPhone || ''
 
-  const eventDateText = toDateText(event?.date)
-  const startText     = toTimeText(event?.startTime)
-  const endText       = toTimeText(event?.endTime)
-  const eventTimeText = startText && endText ? `${startText} – ${endText}` : (startText || '')
-  const venue         = event?.venue || 'TBA'
+  const eventDateText = await this.tzUtil.format(event?.date, 'EEE, dd LLL yyyy')
+  const startText     = event?.startTime ? await this.tzUtil.format(event.startTime, 'hh:mm a') : ''
+  const endText       = event?.endTime ? await this.tzUtil.format(event.endTime, 'hh:mm a') : ''
+  const eventTimeText = startText && endText ? `${startText} – ${endText}` : startText || ''
+
+  const venueText = event?.venueRel?.title || event?.venueRel?.address || event?.venue || 'TBA'
 
   const ctx = {
     eventBookingId: eb.id,
     eventName: event?.name || 'Event',
-    eventDateText, eventTimeText, venue,
-    userName, userEmail, userPhone,
+    eventDateText,
+    eventTimeText,
+    venue: venueText,
+
+    userName: eb.userName || eb.user?.email || 'Attendee',
+    userEmail: eb.userEmail || eb.user?.email || '',
+    userPhone: eb.userPhone || '',
+
     eventUrl: `${APP_URL}/events/${event?.id || ''}`,
     adminUrl: `${APP_URL}/admin/events/${event?.id || ''}`,
+
+    appName: APP_NAME,
+    appUrl: APP_URL,
+    year: new Date().getFullYear(),
   }
 
-  const userTo  = userEmail.trim() || undefined
+  const userTo  = ctx.userEmail?.trim() || undefined
   const adminTo = await this.getAdminRecipients()
 
-  // Reuse same templates with different subjects (or create event-booking-canceled-*.hbs if you want distinct copy)
-  await this.sendIf({ to: userTo,  subject: 'Your event booking was canceled', template: 'event/event-booking-user',   context: ctx })
-  await this.sendIf({ to: adminTo, subject: `Event booking #${eb.id} canceled - ${event?.name || 'Event'}`, template: 'event/event-booking-admin', context: ctx })
+  await this.sendIf({ to: userTo,  subject: 'Your event booking was canceled', template: 'event/booking-event-canceled-user', context: ctx })
+  await this.sendIf({ to: adminTo, subject: `Event booking #${eb.id} canceled - ${ctx.eventName}`, template: 'event/booking-event-canceled-admin', context: ctx })
 }
 
+// ─────────────────────────────────────────────
+// SPONSORSHIPS
+// ─────────────────────────────────────────────
+async sendSponsorshipBooked(bookingId: number) {
+  const booking = await this.prisma.sponsorshipBooking.findUnique({
+    where: { id: bookingId },
+    include: { eventSponsorship: { include: { sponsorshipType: true, event: true } } },
+  })
+  if (!booking) return
+
+  const settings = await this.getSettings()
+  const ctx = {
+    sponsorshipId: booking.id,
+    sponsorshipType: booking.eventSponsorship?.sponsorshipType?.name || 'Sponsorship',
+    eventName: booking.eventSponsorship?.event?.name || 'Event',
+    sponsorName: booking.sponsorName || 'Sponsor',
+    sponsorEmail: booking.sponsorEmail || '',
+    sponsorPhone: booking.sponsorPhone || '',
+    amount: booking.eventSponsorship?.price || 0,
+    currency: settings.currency,
+
+    appName: APP_NAME,
+    appUrl: APP_URL,
+    adminUrl: `${APP_URL}/admin/sponsorships/${booking.id}`,
+  }
+
+  const userTo  = ctx.sponsorEmail?.trim() || undefined
+  const adminTo = await this.getAdminRecipients()
+
+  await this.sendIf({
+    to: userTo,
+    subject: 'Your Sponsorship is Confirmed',
+    template: 'sponsorship/booking-sponsorship-user',
+    context: ctx,
+  })
+
+  await this.sendIf({
+    to: adminTo,
+    subject: `New Sponsorship for ${ctx.eventName}`,
+    template: 'sponsorship/booking-sponsorship-admin',
+    context: ctx,
+  })
 }
 
+// ─────────────────────────────────────────────
+// DONATIONS
+// ─────────────────────────────────────────────
+async sendDonationReceived(donationId: number) {
+  const donation = await this.prisma.donationRecord.findUnique({
+    where: { id: donationId },
+    include: { donationItem: true },
+  });
+  if (!donation) return;
+
+  const settings = await this.getSettings();
+
+  const ctx = {
+    donorName: donation.donorName,
+    donorEmail: donation.donorEmail,
+    donorPhone: donation.donorPhone,
+    donationName: donation.donationItem?.name || donation.itemNameAtDonation,
+    amountText: donation.amountAtDonation
+      ? `${donation.amountAtDonation} ${settings.currency}`
+      : 'Free',
+    appName: APP_NAME,
+    appUrl: APP_URL,
+    adminUrl: `${APP_URL}/admin/donations/${donation.id}`,
+  };
+
+  const userTo = ctx.donorEmail?.trim() || undefined;
+  const adminTo = await this.getAdminRecipients();
+
+  // 👤 User email
+  await this.sendIf({
+    to: userTo,
+    subject: `Thank You for Your Donation`,
+    template: 'donation/booking-donation-user',
+    context: ctx,
+  });
+
+  // 👥 Admin email
+  await this.sendIf({
+    to: adminTo,
+    subject: `New Donation: ${ctx.donationName}`,
+    template: 'donation/booking-donation-admin',
+    context: ctx,
+  });
+}
+
+
+}

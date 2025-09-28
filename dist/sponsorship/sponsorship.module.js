@@ -11,11 +11,13 @@ const common_1 = require("@nestjs/common");
 const sponsorship_service_1 = require("./sponsorship.service");
 const sponsorship_controller_1 = require("./sponsorship.controller");
 const prisma_service_1 = require("../prisma.service");
+const notifications_module_1 = require("../notifications/notifications.module");
 let SponsorshipModule = class SponsorshipModule {
 };
 exports.SponsorshipModule = SponsorshipModule;
 exports.SponsorshipModule = SponsorshipModule = __decorate([
     (0, common_1.Module)({
+        imports: [notifications_module_1.NotificationsModule],
         controllers: [sponsorship_controller_1.SponsorshipController],
         providers: [sponsorship_service_1.SponsorshipService, prisma_service_1.PrismaService],
     })

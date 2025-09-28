@@ -10,15 +10,18 @@ export class SettingsService {
       where: { id: 1 },
     })
 
-    // Fallback default if not set yet
+    // Fallback defaults if not set yet
     if (!settings) {
-      return { currency: 'INR' }
+      return {
+        currency: 'INR',
+        timezone: 'Asia/Kolkata',
+      }
     }
 
     return settings
   }
 
-  async updateSettings(data: { currency: string }) {
+  async updateSettings(data: { currency?: string; timezone?: string }) {
     // Try to update, create if not exists
     const existing = await this.prisma.settings.findUnique({
       where: { id: 1 },
@@ -32,7 +35,11 @@ export class SettingsService {
     }
 
     return this.prisma.settings.create({
-      data: { id: 1, ...data },
+      data: {
+        id: 1,
+        currency: data.currency || 'INR',
+        timezone: data.timezone || 'Asia/Kolkata',
+      },
     })
   }
 }

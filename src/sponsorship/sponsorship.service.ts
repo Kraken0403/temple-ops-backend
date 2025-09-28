@@ -7,10 +7,13 @@ import { CreateSponsorshipBookingDto } from './dto/create-sponsorship-booking.dt
 import { UpdateSponsorshipTypeDto } from './dto/update-sponsorship-type.dto';
 import { UpdateEventSponsorshipDto } from './dto/update-event-sponsorship.dto';
 import { UpdateSponsorshipBookingDto } from './dto/update-sponsorship-booking.dto';
+import { NotificationsService } from '../notifications/notifications.service';
 
 @Injectable()
 export class SponsorshipService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(private readonly prisma: PrismaService,
+    private readonly notifications: NotificationsService, 
+    ) {}
 
   // 1. Create a sponsorship type
   async createType(dto: CreateSponsorshipTypeDto) {
@@ -144,7 +147,7 @@ export class SponsorshipService {
       throw new BadRequestException('Sponsorship slots are full');
     }
 
-    return this.prisma.sponsorshipBooking.create({
+    const booking = await this.prisma.sponsorshipBooking.create({
       data: {
         eventSponsorshipId,
         userId: userId ?? null,
@@ -153,6 +156,11 @@ export class SponsorshipService {
         sponsorPhone: dto.sponsorPhone,
       },
     });
+
+    // 👇 send email notification
+    await this.notifications.sendSponsorshipBooked(booking.id);
+
+    return booking;
   }
 
   // 4. Get all sponsorships for an event

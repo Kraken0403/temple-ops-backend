@@ -10,7 +10,6 @@ var __metadata = (this && this.__metadata) || function (k, v) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.CreatePoojaJsonDto = void 0;
-// src/pooja/dto/create-pooja-json.dto.ts
 const class_validator_1 = require("class-validator");
 const class_transformer_1 = require("class-transformer");
 class CreatePoojaJsonDto {
@@ -26,6 +25,13 @@ __decorate([
     (0, class_validator_1.IsNumber)({}, { each: true }),
     __metadata("design:type", Array)
 ], CreatePoojaJsonDto.prototype, "priestIds", void 0);
+__decorate([
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsArray)(),
+    (0, class_transformer_1.Type)(() => Number),
+    (0, class_validator_1.IsNumber)({}, { each: true }),
+    __metadata("design:type", Array)
+], CreatePoojaJsonDto.prototype, "categoryIds", void 0);
 __decorate([
     (0, class_transformer_1.Type)(() => Number),
     (0, class_validator_1.IsNumber)(),
@@ -57,30 +63,34 @@ __decorate([
     __metadata("design:type", Boolean)
 ], CreatePoojaJsonDto.prototype, "isOutsideVenue", void 0);
 __decorate([
-    (0, class_validator_1.ValidateIf)(o => o.isInVenue),
+    (0, class_validator_1.IsOptional)(),
+    (0, class_transformer_1.Type)(() => Number),
+    (0, class_validator_1.IsNumber)(),
+    __metadata("design:type", Number)
+], CreatePoojaJsonDto.prototype, "venueId", void 0);
+__decorate([
+    (0, class_validator_1.IsOptional)(),
     (0, class_validator_1.IsDateString)(),
     __metadata("design:type", String)
 ], CreatePoojaJsonDto.prototype, "date", void 0);
 __decorate([
-    (0, class_validator_1.ValidateIf)(o => o.isInVenue),
+    (0, class_validator_1.IsOptional)(),
     (0, class_validator_1.IsDateString)(),
     __metadata("design:type", String)
 ], CreatePoojaJsonDto.prototype, "time", void 0);
 __decorate([
-    (0, class_validator_1.ValidateIf)(o => o.isInVenue),
     (0, class_validator_1.IsOptional)(),
     (0, class_validator_1.IsString)(),
     __metadata("design:type", String)
 ], CreatePoojaJsonDto.prototype, "venueAddress", void 0);
 __decorate([
-    (0, class_validator_1.ValidateIf)(o => o.isInVenue),
     (0, class_validator_1.IsOptional)(),
     (0, class_validator_1.IsString)(),
     __metadata("design:type", String)
 ], CreatePoojaJsonDto.prototype, "mapLink", void 0);
 __decorate([
-    (0, class_validator_1.ValidateIf)(o => o.isOutsideVenue),
     (0, class_validator_1.IsArray)(),
+    (0, class_validator_1.IsOptional)(),
     (0, class_validator_1.IsString)({ each: true }),
     __metadata("design:type", Array)
 ], CreatePoojaJsonDto.prototype, "allowedZones", void 0);
@@ -113,7 +123,11 @@ __decorate([
 ], CreatePoojaJsonDto.prototype, "description", void 0);
 __decorate([
     (0, class_validator_1.IsOptional)(),
-    (0, class_validator_1.IsString)(),
-    __metadata("design:type", String)
-], CreatePoojaJsonDto.prototype, "photoUrl", void 0);
+    (0, class_transformer_1.Type)(() => Number),
+    __metadata("design:type", Number)
+], CreatePoojaJsonDto.prototype, "featuredMediaId", void 0);
+__decorate([
+    (0, class_validator_1.IsOptional)(),
+    __metadata("design:type", Boolean)
+], CreatePoojaJsonDto.prototype, "clearFeaturedMedia", void 0);
 //# sourceMappingURL=create-pooja-json.dto.js.map

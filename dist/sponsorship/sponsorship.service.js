@@ -13,9 +13,11 @@ exports.SponsorshipService = void 0;
 // src/sponsorship/sponsorship.service.ts
 const common_1 = require("@nestjs/common");
 const prisma_service_1 = require("../prisma.service");
+const notifications_service_1 = require("../notifications/notifications.service");
 let SponsorshipService = class SponsorshipService {
-    constructor(prisma) {
+    constructor(prisma, notifications) {
         this.prisma = prisma;
+        this.notifications = notifications;
     }
     // 1. Create a sponsorship type
     async createType(dto) {
@@ -136,7 +138,7 @@ let SponsorshipService = class SponsorshipService {
         if (sponsorship.bookings.length >= sponsorship.maxSlots) {
             throw new common_1.BadRequestException('Sponsorship slots are full');
         }
-        return this.prisma.sponsorshipBooking.create({
+        const booking = await this.prisma.sponsorshipBooking.create({
             data: {
                 eventSponsorshipId,
                 userId: userId ?? null,
@@ -145,6 +147,9 @@ let SponsorshipService = class SponsorshipService {
                 sponsorPhone: dto.sponsorPhone,
             },
         });
+        // 👇 send email notification
+        await this.notifications.sendSponsorshipBooked(booking.id);
+        return booking;
     }
     // 4. Get all sponsorships for an event
     async getSponsorshipsForEvent(eventId) {
@@ -234,6 +239,7 @@ let SponsorshipService = class SponsorshipService {
 exports.SponsorshipService = SponsorshipService;
 exports.SponsorshipService = SponsorshipService = __decorate([
     (0, common_1.Injectable)(),
-    __metadata("design:paramtypes", [prisma_service_1.PrismaService])
+    __metadata("design:paramtypes", [prisma_service_1.PrismaService,
+        notifications_service_1.NotificationsService])
 ], SponsorshipService);
 //# sourceMappingURL=sponsorship.service.js.map

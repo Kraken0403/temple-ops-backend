@@ -312,7 +312,7 @@ model Event {
   description String?   @db.VarChar(1000)
 
   // Outside venue (legacy fields kept as-is)
-  venue       String                         // outside-venue address/name
+  venue       String?                         // outside-venue address/name
   mapLink     String?                        // outside-venue map link
 
 
@@ -385,8 +385,8 @@ model SponsorshipType {
 
 model EventSponsorship {
   id      Int   @id @default(autoincrement())
-  event   Event @relation(fields: [eventId], references: [id])
-  eventId Int
+  event   Event? @relation(fields: [eventId], references: [id])
+  eventId Int?
 
   sponsorshipType   SponsorshipType @relation(fields: [sponsorshipTypeId], references: [id])
   sponsorshipTypeId Int
@@ -423,9 +423,10 @@ model SponsorshipBooking {
 }
 
 model Settings {
-  id       Int    @id @default(1)
-  currency String @default("INR")
-
+  id        Int      @id @default(1)
+  currency  String   @default("INR")
+  timezone  String   @default("Asia/Kolkata")
+  updatedAt DateTime @updatedAt @default(now())
   @@map("settings")
 }
 

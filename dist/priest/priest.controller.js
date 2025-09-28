@@ -13,14 +13,12 @@ var __param = (this && this.__param) || function (paramIndex, decorator) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.PriestController = void 0;
-// src/priest/priest.controller.ts
 const common_1 = require("@nestjs/common");
 const priest_service_1 = require("./priest.service");
 const create_priest_dto_1 = require("./dto/create-priest.dto");
 const update_priest_dto_1 = require("./dto/update-priest.dto");
 const create_slot_dto_1 = require("./dto/create-slot.dto");
 const update_slot_dto_1 = require("./dto/update-slot.dto");
-const platform_express_1 = require("@nestjs/platform-express");
 let PriestController = class PriestController {
     constructor(svc) {
         this.svc = svc;
@@ -28,10 +26,6 @@ let PriestController = class PriestController {
     // Priest endpoints
     async createPriest(dto) {
         return this.svc.createPriest(dto);
-    }
-    async uploadPhoto(file) {
-        const url = await this.svc.savePhotoAndGetUrl(file);
-        return { url };
     }
     async getAll() {
         return this.svc.getAllPriests();
@@ -58,18 +52,14 @@ let PriestController = class PriestController {
     async deleteSlot(id) {
         return this.svc.deleteSlot(id);
     }
-    async getSlotsInRange(priestId, from, to) {
-        return this.svc.getSlotsForPriestInRange(priestId, new Date(from), new Date(to));
-    }
-    async getAvailableChunks(priestId, duration, date) {
-        const poojaDuration = parseInt(duration, 10);
-        if (isNaN(poojaDuration)) {
-            throw new common_1.BadRequestException('Invalid duration');
-        }
-        if (!date) {
-            throw new common_1.BadRequestException('Date is required');
-        }
-        return this.svc.getAvailableChunks(priestId, date, poojaDuration);
+    async getAvailableChunks(priestId, duration, totalMinutes, date, bookingDate) {
+        const finalDate = date ?? bookingDate;
+        const minutes = Number(duration ?? totalMinutes);
+        if (!finalDate)
+            throw new common_1.BadRequestException('Date/bookingDate is required');
+        if (!minutes || Number.isNaN(minutes))
+            throw new common_1.BadRequestException('duration/totalMinutes must be a positive number');
+        return this.svc.getAvailableChunks(priestId, finalDate, minutes);
     }
 };
 exports.PriestController = PriestController;
@@ -80,14 +70,6 @@ __decorate([
     __metadata("design:paramtypes", [create_priest_dto_1.CreatePriestDto]),
     __metadata("design:returntype", Promise)
 ], PriestController.prototype, "createPriest", null);
-__decorate([
-    (0, common_1.Post)('upload-photo'),
-    (0, common_1.UseInterceptors)((0, platform_express_1.FileInterceptor)('file')),
-    __param(0, (0, common_1.UploadedFile)()),
-    __metadata("design:type", Function),
-    __metadata("design:paramtypes", [Object]),
-    __metadata("design:returntype", Promise)
-], PriestController.prototype, "uploadPhoto", null);
 __decorate([
     (0, common_1.Get)(),
     __metadata("design:type", Function),
@@ -146,21 +128,14 @@ __decorate([
     __metadata("design:returntype", Promise)
 ], PriestController.prototype, "deleteSlot", null);
 __decorate([
-    (0, common_1.Get)(':priestId/slots-range'),
-    __param(0, (0, common_1.Param)('priestId', common_1.ParseIntPipe)),
-    __param(1, (0, common_1.Query)('from')),
-    __param(2, (0, common_1.Query)('to')),
-    __metadata("design:type", Function),
-    __metadata("design:paramtypes", [Number, String, String]),
-    __metadata("design:returntype", Promise)
-], PriestController.prototype, "getSlotsInRange", null);
-__decorate([
     (0, common_1.Get)(':priestId/available-chunks'),
     __param(0, (0, common_1.Param)('priestId', common_1.ParseIntPipe)),
     __param(1, (0, common_1.Query)('duration')),
-    __param(2, (0, common_1.Query)('date')),
+    __param(2, (0, common_1.Query)('totalMinutes')),
+    __param(3, (0, common_1.Query)('date')),
+    __param(4, (0, common_1.Query)('bookingDate')),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", [Number, String, String]),
+    __metadata("design:paramtypes", [Number, String, String, String, String]),
     __metadata("design:returntype", Promise)
 ], PriestController.prototype, "getAvailableChunks", null);
 exports.PriestController = PriestController = __decorate([

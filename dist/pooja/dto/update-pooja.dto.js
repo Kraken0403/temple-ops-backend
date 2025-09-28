@@ -10,7 +10,6 @@ var __metadata = (this && this.__metadata) || function (k, v) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.UpdatePoojaDto = void 0;
-// src/pooja/dto/update-pooja.dto.ts
 const class_validator_1 = require("class-validator");
 const class_transformer_1 = require("class-transformer");
 class UpdatePoojaDto {
@@ -28,6 +27,13 @@ __decorate([
     (0, class_validator_1.IsNumber)({}, { each: true }),
     __metadata("design:type", Array)
 ], UpdatePoojaDto.prototype, "priestIds", void 0);
+__decorate([
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsArray)(),
+    (0, class_transformer_1.Type)(() => Number),
+    (0, class_validator_1.IsNumber)({}, { each: true }),
+    __metadata("design:type", Array)
+], UpdatePoojaDto.prototype, "categoryIds", void 0);
 __decorate([
     (0, class_validator_1.IsOptional)(),
     (0, class_transformer_1.Type)(() => Number),
@@ -66,13 +72,19 @@ __decorate([
 ], UpdatePoojaDto.prototype, "isOutsideVenue", void 0);
 __decorate([
     (0, class_validator_1.IsOptional)(),
+    (0, class_transformer_1.Type)(() => Number),
+    (0, class_validator_1.IsNumber)(),
+    __metadata("design:type", Number)
+], UpdatePoojaDto.prototype, "venueId", void 0);
+__decorate([
+    (0, class_validator_1.IsOptional)(),
     (0, class_validator_1.IsDateString)(),
-    __metadata("design:type", String)
+    __metadata("design:type", Object)
 ], UpdatePoojaDto.prototype, "date", void 0);
 __decorate([
     (0, class_validator_1.IsOptional)(),
     (0, class_validator_1.IsDateString)(),
-    __metadata("design:type", String)
+    __metadata("design:type", Object)
 ], UpdatePoojaDto.prototype, "time", void 0);
 __decorate([
     (0, class_validator_1.IsOptional)(),
@@ -116,10 +128,14 @@ __decorate([
     (0, class_validator_1.IsOptional)(),
     (0, class_validator_1.IsString)(),
     __metadata("design:type", String)
-], UpdatePoojaDto.prototype, "photoUrl", void 0);
+], UpdatePoojaDto.prototype, "description", void 0);
 __decorate([
     (0, class_validator_1.IsOptional)(),
-    (0, class_validator_1.IsString)(),
-    __metadata("design:type", String)
-], UpdatePoojaDto.prototype, "description", void 0);
+    (0, class_transformer_1.Type)(() => Number),
+    __metadata("design:type", Number)
+], UpdatePoojaDto.prototype, "featuredMediaId", void 0);
+__decorate([
+    (0, class_validator_1.IsOptional)(),
+    __metadata("design:type", Boolean)
+], UpdatePoojaDto.prototype, "clearFeaturedMedia", void 0);
 //# sourceMappingURL=update-pooja.dto.js.map

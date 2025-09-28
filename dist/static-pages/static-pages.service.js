@@ -22,21 +22,30 @@ let StaticPagesService = class StaticPagesService {
     async getPage(slug) {
         return this.prisma.staticPage.findUnique({ where: { slug } });
     }
-    async updatePage(slug, content) {
-        return this.prisma.staticPage.update({
-            where: { slug },
-            data: { content },
+    async createPage(slug, content) {
+        return this.prisma.staticPage.create({
+            data: { slug, content: content ?? {} },
         });
     }
-    // ✅ Same upload handler as events
+    // Use upsert so first save doesn't 404
+    async updatePage(slug, content) {
+        return this.prisma.staticPage.upsert({
+            where: { slug },
+            update: { content: content ?? {} },
+            create: { slug, content: content ?? {} },
+        });
+    }
+    // (You can keep this if you like a flat /uploads; see "Better upload" below)
     async savePhotoAndGetUrl(file) {
-        const uploadDir = path.join(__dirname, '..', '..', 'uploads');
+        const uploadDir = path.join(process.cwd(), 'uploads'); // align with main.ts static root
         if (!fs.existsSync(uploadDir))
-            fs.mkdirSync(uploadDir);
-        const filename = Date.now() + '-' + file.originalname;
-        const filepath = path.join(uploadDir, filename);
+            fs.mkdirSync(uploadDir, { recursive: true });
+        const safeName = `${Date.now()}-${(file.originalname || 'file')
+            .replace(/[^\w.-]+/g, '-')
+            .toLowerCase()}`;
+        const filepath = path.join(uploadDir, safeName);
         await fs.promises.writeFile(filepath, file.buffer);
-        return `/uploads/${filename}`;
+        return `/uploads/${safeName}`;
     }
 };
 exports.StaticPagesService = StaticPagesService;

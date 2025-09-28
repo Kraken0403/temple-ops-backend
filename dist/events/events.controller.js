@@ -1,5 +1,4 @@
 "use strict";
-// src/events/events.controller.ts
 var __decorate = (this && this.__decorate) || function (decorators, target, key, desc) {
     var c = arguments.length, r = c < 3 ? target : desc === null ? desc = Object.getOwnPropertyDescriptor(target, key) : desc, d;
     if (typeof Reflect === "object" && typeof Reflect.decorate === "function") r = Reflect.decorate(decorators, target, key, desc);
@@ -15,53 +14,46 @@ var __param = (this && this.__param) || function (paramIndex, decorator) {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.EventsController = void 0;
 const common_1 = require("@nestjs/common");
-const platform_express_1 = require("@nestjs/platform-express");
 const events_service_1 = require("./events.service");
 const create_event_dto_1 = require("./dto/create-event.dto");
 const update_event_dto_1 = require("./dto/update-event.dto");
 const book_event_dto_1 = require("./dto/book-event.dto");
 let EventsController = class EventsController {
-    constructor(eventsService) {
-        this.eventsService = eventsService;
+    constructor(svc) {
+        this.svc = svc;
     }
-    // ——— Photo upload
-    async uploadPhoto(file) {
-        const url = await this.eventsService.savePhotoAndGetUrl(file);
-        return { url };
-    }
-    // ——— CRUD
-    create(dto) {
-        return this.eventsService.create(dto);
-    }
-    findAll() {
-        return this.eventsService.findAll();
-    }
-    findOne(id) {
-        return this.eventsService.findOne(id);
-    }
+    create(dto) { return this.svc.create(dto); }
+    findAll() { return this.svc.findAll(); }
+    findOne(id) { return this.svc.findOne(id); }
     update(id, dto) {
-        return this.eventsService.update(id, dto);
+        return this.svc.update(id, dto);
     }
-    remove(id) {
-        return this.eventsService.remove(id);
+    remove(id) { return this.svc.remove(id); }
+    // Bookings
+    bookGuest(id, dto) {
+        return this.svc.bookEventAsGuest(id, dto);
     }
-    findBookings(id) {
-        return this.eventsService.findBookings(id);
+    bookings(id) {
+        return this.svc.findBookings(id);
     }
-    // ——— Guest booking (no AuthGuard)
-    book(id, dto) {
-        return this.eventsService.bookEventAsGuest(id, dto);
+    // Media helpers
+    setFeatured(id, mediaId) {
+        if (mediaId !== null && mediaId !== undefined && Number.isNaN(Number(mediaId))) {
+            throw new common_1.BadRequestException('mediaId must be a number or null');
+        }
+        return this.svc.setFeaturedMedia(id, mediaId ?? null);
+    }
+    addGallery(id, mediaIds) {
+        return this.svc.addToGallery(id, mediaIds ?? []);
+    }
+    reorderGallery(id, orders) {
+        return this.svc.reorderGallery(id, orders ?? []);
+    }
+    removeGallery(id, mediaId) {
+        return this.svc.removeFromGallery(id, mediaId);
     }
 };
 exports.EventsController = EventsController;
-__decorate([
-    (0, common_1.Post)('upload-photo'),
-    (0, common_1.UseInterceptors)((0, platform_express_1.FileInterceptor)('file')),
-    __param(0, (0, common_1.UploadedFile)()),
-    __metadata("design:type", Function),
-    __metadata("design:paramtypes", [Object]),
-    __metadata("design:returntype", Promise)
-], EventsController.prototype, "uploadPhoto", null);
 __decorate([
     (0, common_1.Post)(),
     __param(0, (0, common_1.Body)()),
@@ -98,20 +90,52 @@ __decorate([
     __metadata("design:returntype", void 0)
 ], EventsController.prototype, "remove", null);
 __decorate([
-    (0, common_1.Get)(':id/bookings'),
-    __param(0, (0, common_1.Param)('id', common_1.ParseIntPipe)),
-    __metadata("design:type", Function),
-    __metadata("design:paramtypes", [Number]),
-    __metadata("design:returntype", void 0)
-], EventsController.prototype, "findBookings", null);
-__decorate([
     (0, common_1.Post)(':id/book'),
     __param(0, (0, common_1.Param)('id', common_1.ParseIntPipe)),
     __param(1, (0, common_1.Body)()),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", [Number, book_event_dto_1.BookEventDto]),
     __metadata("design:returntype", void 0)
-], EventsController.prototype, "book", null);
+], EventsController.prototype, "bookGuest", null);
+__decorate([
+    (0, common_1.Get)(':id/bookings'),
+    __param(0, (0, common_1.Param)('id', common_1.ParseIntPipe)),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Number]),
+    __metadata("design:returntype", void 0)
+], EventsController.prototype, "bookings", null);
+__decorate([
+    (0, common_1.Patch)(':id/featured-media'),
+    __param(0, (0, common_1.Param)('id', common_1.ParseIntPipe)),
+    __param(1, (0, common_1.Body)('mediaId')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Number, Object]),
+    __metadata("design:returntype", void 0)
+], EventsController.prototype, "setFeatured", null);
+__decorate([
+    (0, common_1.Post)(':id/gallery'),
+    __param(0, (0, common_1.Param)('id', common_1.ParseIntPipe)),
+    __param(1, (0, common_1.Body)('mediaIds')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Number, Array]),
+    __metadata("design:returntype", void 0)
+], EventsController.prototype, "addGallery", null);
+__decorate([
+    (0, common_1.Patch)(':id/gallery'),
+    __param(0, (0, common_1.Param)('id', common_1.ParseIntPipe)),
+    __param(1, (0, common_1.Body)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Number, Array]),
+    __metadata("design:returntype", void 0)
+], EventsController.prototype, "reorderGallery", null);
+__decorate([
+    (0, common_1.Delete)(':id/gallery/:mediaId'),
+    __param(0, (0, common_1.Param)('id', common_1.ParseIntPipe)),
+    __param(1, (0, common_1.Param)('mediaId', common_1.ParseIntPipe)),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Number, Number]),
+    __metadata("design:returntype", void 0)
+], EventsController.prototype, "removeGallery", null);
 exports.EventsController = EventsController = __decorate([
     (0, common_1.Controller)('events'),
     __metadata("design:paramtypes", [events_service_1.EventsService])

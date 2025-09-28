@@ -13,9 +13,7 @@ var __param = (this && this.__param) || function (paramIndex, decorator) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.PoojaController = void 0;
-// src/pooja/pooja.controller.ts
 const common_1 = require("@nestjs/common");
-const platform_express_1 = require("@nestjs/platform-express");
 const pooja_service_1 = require("./pooja.service");
 const create_pooja_json_dto_1 = require("./dto/create-pooja-json.dto");
 const update_pooja_dto_1 = require("./dto/update-pooja.dto");
@@ -23,30 +21,30 @@ let PoojaController = class PoojaController {
     constructor(svc) {
         this.svc = svc;
     }
-    findAll() {
-        return this.svc.findAll();
-    }
-    findOne(id) {
-        return this.svc.findOne(id);
-    }
-    /** STEP 1: upload a file, return a URL */
-    async uploadPhoto(file) {
-        const url = await this.svc.savePhotoAndGetUrl(file);
-        return { url };
-    }
-    /** STEP 2: create via JSON (including the photoUrl you just got) */
-    create(dto) {
-        return this.svc.createFromJson(dto);
-    }
-    /** Update via JSON */
+    findAll() { return this.svc.findAll(); }
+    findOne(id) { return this.svc.findOne(id); }
+    create(dto) { return this.svc.createFromJson(dto); }
     update(id, dto) {
         return this.svc.updateFromJson(id, dto);
     }
-    /** Delete a pooja
-     * - Will REFUSE if any bookings exist (to avoid affecting records)
-     */
-    remove(id) {
-        return this.svc.remove(id);
+    remove(id, force) {
+        return this.svc.remove(id, force === 'true');
+    }
+    // Media helpers
+    setFeatured(id, mediaId) {
+        if (mediaId !== null && mediaId !== undefined && Number.isNaN(Number(mediaId))) {
+            throw new common_1.BadRequestException('mediaId must be a number or null');
+        }
+        return this.svc.setFeaturedMedia(id, mediaId ?? null);
+    }
+    addGallery(id, mediaIds) {
+        return this.svc.addToGallery(id, mediaIds ?? []);
+    }
+    reorderGallery(id, orders) {
+        return this.svc.reorderGallery(id, orders ?? []);
+    }
+    removeGallery(id, mediaId) {
+        return this.svc.removeFromGallery(id, mediaId);
     }
 };
 exports.PoojaController = PoojaController;
@@ -63,14 +61,6 @@ __decorate([
     __metadata("design:paramtypes", [Number]),
     __metadata("design:returntype", void 0)
 ], PoojaController.prototype, "findOne", null);
-__decorate([
-    (0, common_1.Post)('upload-photo'),
-    (0, common_1.UseInterceptors)((0, platform_express_1.FileInterceptor)('file')),
-    __param(0, (0, common_1.UploadedFile)()),
-    __metadata("design:type", Function),
-    __metadata("design:paramtypes", [Object]),
-    __metadata("design:returntype", Promise)
-], PoojaController.prototype, "uploadPhoto", null);
 __decorate([
     (0, common_1.Post)(),
     __param(0, (0, common_1.Body)()),
@@ -89,10 +79,43 @@ __decorate([
 __decorate([
     (0, common_1.Delete)(':id'),
     __param(0, (0, common_1.Param)('id', common_1.ParseIntPipe)),
+    __param(1, (0, common_1.Query)('force')),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", [Number]),
+    __metadata("design:paramtypes", [Number, String]),
     __metadata("design:returntype", void 0)
 ], PoojaController.prototype, "remove", null);
+__decorate([
+    (0, common_1.Patch)(':id/featured-media'),
+    __param(0, (0, common_1.Param)('id', common_1.ParseIntPipe)),
+    __param(1, (0, common_1.Body)('mediaId')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Number, Object]),
+    __metadata("design:returntype", void 0)
+], PoojaController.prototype, "setFeatured", null);
+__decorate([
+    (0, common_1.Post)(':id/gallery'),
+    __param(0, (0, common_1.Param)('id', common_1.ParseIntPipe)),
+    __param(1, (0, common_1.Body)('mediaIds')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Number, Array]),
+    __metadata("design:returntype", void 0)
+], PoojaController.prototype, "addGallery", null);
+__decorate([
+    (0, common_1.Patch)(':id/gallery'),
+    __param(0, (0, common_1.Param)('id', common_1.ParseIntPipe)),
+    __param(1, (0, common_1.Body)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Number, Array]),
+    __metadata("design:returntype", void 0)
+], PoojaController.prototype, "reorderGallery", null);
+__decorate([
+    (0, common_1.Delete)(':id/gallery/:mediaId'),
+    __param(0, (0, common_1.Param)('id', common_1.ParseIntPipe)),
+    __param(1, (0, common_1.Param)('mediaId', common_1.ParseIntPipe)),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Number, Number]),
+    __metadata("design:returntype", void 0)
+], PoojaController.prototype, "removeGallery", null);
 exports.PoojaController = PoojaController = __decorate([
     (0, common_1.Controller)('pooja'),
     __metadata("design:paramtypes", [pooja_service_1.PoojaService])

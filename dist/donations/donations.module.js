@@ -14,11 +14,13 @@ const donation_item_service_1 = require("./donation-item.service");
 const donation_item_controller_1 = require("./donation-item.controller");
 const donation_record_service_1 = require("./donation-record.service");
 const donation_record_controller_1 = require("./donation-record.controller");
+const notifications_module_1 = require("../notifications/notifications.module");
 let DonationsModule = class DonationsModule {
 };
 exports.DonationsModule = DonationsModule;
 exports.DonationsModule = DonationsModule = __decorate([
     (0, common_1.Module)({
+        imports: [notifications_module_1.NotificationsModule],
         controllers: [
             donation_item_controller_1.DonationItemController,
             donation_record_controller_1.DonationRecordController

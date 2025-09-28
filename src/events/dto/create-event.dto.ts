@@ -21,11 +21,11 @@ export class CreateEventDto {
   mapLink?: string;
 
   /** Unified flags (same pattern as Pooja) */
-  @IsBoolean() @Type(() => Boolean)
-  isInVenue!: boolean;
-
-  @IsBoolean() @Type(() => Boolean)
-  isOutsideVenue!: boolean;
+  @IsBoolean() @IsOptional() @Type(() => Boolean)
+  isInVenue?: boolean;
+  
+  @IsBoolean() @IsOptional() @Type(() => Boolean)
+  isOutsideVenue?: boolean;  
 
   @IsDateString() date!: string;
   @IsDateString() @IsOptional() endDate?: string;

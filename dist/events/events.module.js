@@ -7,17 +7,20 @@ var __decorate = (this && this.__decorate) || function (decorators, target, key,
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.EventsModule = void 0;
+// src/events/events.module.ts
 const common_1 = require("@nestjs/common");
-const prisma_service_1 = require("../prisma.service");
 const events_service_1 = require("./events.service");
 const events_controller_1 = require("./events.controller");
+const prisma_service_1 = require("../prisma.service");
+const notifications_module_1 = require("../notifications/notifications.module");
 let EventsModule = class EventsModule {
 };
 exports.EventsModule = EventsModule;
 exports.EventsModule = EventsModule = __decorate([
     (0, common_1.Module)({
-        providers: [events_service_1.EventsService, prisma_service_1.PrismaService],
+        imports: [notifications_module_1.NotificationsModule],
         controllers: [events_controller_1.EventsController],
+        providers: [events_service_1.EventsService, prisma_service_1.PrismaService],
     })
 ], EventsModule);
 //# sourceMappingURL=events.module.js.map

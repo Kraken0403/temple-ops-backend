@@ -30,6 +30,9 @@ const static_pages_module_1 = require("./static-pages/static-pages.module");
 const notifications_module_1 = require("./notifications/notifications.module");
 const media_module_1 = require("./media/media.module");
 const albums_module_1 = require("./albums/albums.module");
+const venues_module_1 = require("./venues/venues.module");
+const pooja_category_module_1 = require("./pooja-category/pooja-category.module");
+const bhajans_module_1 = require("./bhajans/bhajans.module");
 let AppModule = class AppModule {
 };
 exports.AppModule = AppModule;
@@ -38,7 +41,7 @@ exports.AppModule = AppModule = __decorate([
         imports: [serve_static_1.ServeStaticModule.forRoot({
                 rootPath: path.join(process.cwd(), 'uploads'),
                 serveRoot: '/uploads',
-            }), prisma_module_1.PrismaModule, notifications_module_1.NotificationsModule, role_users_module_1.RoleUsersModule, users_module_1.UsersModule, roles_module_1.RolesModule, auth_module_1.AuthModule, static_pages_module_1.StaticPagesModule, pooja_module_1.PoojaModule, priest_module_1.PriestModule, booking_module_1.BookingModule, events_module_1.EventsModule, donations_module_1.DonationsModule, sponsorship_module_1.SponsorshipModule, settings_module_1.SettingsModule, permissions_module_1.PermissionsModule, role_permissions_module_1.RolePermissionsModule, media_module_1.MediaModule, albums_module_1.AlbumsModule],
+            }), prisma_module_1.PrismaModule, bhajans_module_1.BhajansModule, pooja_category_module_1.PoojaCategoryModule, notifications_module_1.NotificationsModule, role_users_module_1.RoleUsersModule, users_module_1.UsersModule, roles_module_1.RolesModule, auth_module_1.AuthModule, static_pages_module_1.StaticPagesModule, pooja_module_1.PoojaModule, priest_module_1.PriestModule, booking_module_1.BookingModule, events_module_1.EventsModule, donations_module_1.DonationsModule, sponsorship_module_1.SponsorshipModule, settings_module_1.SettingsModule, permissions_module_1.PermissionsModule, role_permissions_module_1.RolePermissionsModule, media_module_1.MediaModule, albums_module_1.AlbumsModule, venues_module_1.VenuesModule],
     })
 ], AppModule);
 //# sourceMappingURL=app.module.js.map
