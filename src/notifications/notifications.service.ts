@@ -136,56 +136,104 @@ export class NotificationsService {
   async sendBookingCreated(bookingId: number) {
     const booking = await this.prisma.booking.findUnique({
       where: { id: bookingId },
-      include: { pooja: true, priest: true, user: true },
+      include: {
+        pooja: {
+          select: {
+            name: true,
+            durationMin: true,
+            prepTimeMin: true,
+            bufferMin: true,
+            includeFood: true,
+            includeHall: true,
+            materials: true,
+            notes: true,
+          },
+        },
+        priest: true,
+        user: true,
+      },
     })
     if (!booking) return
-
+  
     const ctx = await this.buildBookingCtx(booking)
-
+  
     const userTo   = (booking.userEmail || booking.user?.email || '').trim() || undefined
     const priestTo = (booking.priest?.email || '').trim() || undefined
     const adminTo  = await this.getAdminRecipients()
-
+  
     await this.sendIf({ to: userTo,   subject: 'Your booking is confirmed', template: 'booking/booking-user',   context: ctx })
     await this.sendIf({ to: priestTo, subject: `New booking assigned: ${ctx.poojaName}`, template: 'booking/booking-priest', context: ctx })
     await this.sendIf({ to: adminTo,  subject: `New booking #${ctx.bookingId} - ${ctx.poojaName}`, template: 'booking/booking-admin', context: ctx })
   }
+  
 
   async sendBookingUpdated(bookingId: number) {
     const booking = await this.prisma.booking.findUnique({
       where: { id: bookingId },
-      include: { pooja: true, priest: true, user: true },
+      include: {
+        pooja: {
+          select: {
+            name: true,
+            durationMin: true,
+            prepTimeMin: true,
+            bufferMin: true,
+            includeFood: true,
+            includeHall: true,
+            materials: true,
+            notes: true,
+          },
+        },
+        priest: true,
+        user: true,
+      },
     })
     if (!booking) return
-
+  
     const ctx = await this.buildBookingCtx(booking)
-
+  
     const userTo   = (booking.userEmail || booking.user?.email || '').trim() || undefined
     const priestTo = (booking.priest?.email || '').trim() || undefined
     const adminTo  = await this.getAdminRecipients()
-
+  
     await this.sendIf({ to: userTo,   subject: 'Your booking was updated', template: 'booking/booking-updated-user',   context: ctx })
     await this.sendIf({ to: priestTo, subject: 'A booking assigned to you was updated', template: 'booking/booking-updated-priest', context: ctx })
     await this.sendIf({ to: adminTo,  subject: `Booking #${ctx.bookingId} updated`, template: 'booking/booking-updated-admin', context: ctx })
   }
+  
 
   async sendBookingCanceled(bookingId: number) {
     const booking = await this.prisma.booking.findUnique({
       where: { id: bookingId },
-      include: { pooja: true, priest: true, user: true },
+      include: {
+        pooja: {
+          select: {
+            name: true,
+            durationMin: true,
+            prepTimeMin: true,
+            bufferMin: true,
+            includeFood: true,
+            includeHall: true,
+            materials: true,
+            notes: true,
+          },
+        },
+        priest: true,
+        user: true,
+      },
     })
     if (!booking) return
-
+  
     const ctx = await this.buildBookingCtx(booking)
-
+  
     const userTo   = (booking.userEmail || booking.user?.email || '').trim() || undefined
     const priestTo = (booking.priest?.email || '').trim() || undefined
     const adminTo  = await this.getAdminRecipients()
-
+  
     await this.sendIf({ to: userTo,   subject: 'Your booking was canceled', template: 'booking/booking-canceled-user',   context: ctx })
     await this.sendIf({ to: priestTo, subject: 'A booking assigned to you was canceled', template: 'booking/booking-canceled-priest', context: ctx })
     await this.sendIf({ to: adminTo,  subject: `Booking #${ctx.bookingId} canceled`, template: 'booking/booking-canceled-admin', context: ctx })
   }
+  
 
 // ─────────────────────────────────────────────
 // EVENTS
