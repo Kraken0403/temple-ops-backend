@@ -123,10 +123,26 @@ let NotificationsService = NotificationsService_1 = class NotificationsService {
     async sendBookingCreated(bookingId) {
         const booking = await this.prisma.booking.findUnique({
             where: { id: bookingId },
-            include: { pooja: true, priest: true, user: true },
+            include: {
+                pooja: {
+                    select: {
+                        name: true,
+                        durationMin: true,
+                        prepTimeMin: true,
+                        bufferMin: true,
+                        includeFood: true,
+                        includeHall: true,
+                        materials: true,
+                        notes: true,
+                    },
+                },
+                priest: true,
+                user: true,
+            },
         });
         if (!booking)
             return;
+        this.logger.debug('Booking Pooja Data:', booking.pooja);
         const ctx = await this.buildBookingCtx(booking);
         const userTo = (booking.userEmail || booking.user?.email || '').trim() || undefined;
         const priestTo = (booking.priest?.email || '').trim() || undefined;
@@ -138,7 +154,22 @@ let NotificationsService = NotificationsService_1 = class NotificationsService {
     async sendBookingUpdated(bookingId) {
         const booking = await this.prisma.booking.findUnique({
             where: { id: bookingId },
-            include: { pooja: true, priest: true, user: true },
+            include: {
+                pooja: {
+                    select: {
+                        name: true,
+                        durationMin: true,
+                        prepTimeMin: true,
+                        bufferMin: true,
+                        includeFood: true,
+                        includeHall: true,
+                        materials: true,
+                        notes: true,
+                    },
+                },
+                priest: true,
+                user: true,
+            },
         });
         if (!booking)
             return;
@@ -153,7 +184,22 @@ let NotificationsService = NotificationsService_1 = class NotificationsService {
     async sendBookingCanceled(bookingId) {
         const booking = await this.prisma.booking.findUnique({
             where: { id: bookingId },
-            include: { pooja: true, priest: true, user: true },
+            include: {
+                pooja: {
+                    select: {
+                        name: true,
+                        durationMin: true,
+                        prepTimeMin: true,
+                        bufferMin: true,
+                        includeFood: true,
+                        includeHall: true,
+                        materials: true,
+                        notes: true,
+                    },
+                },
+                priest: true,
+                user: true,
+            },
         });
         if (!booking)
             return;

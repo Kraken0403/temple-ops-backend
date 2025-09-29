@@ -43,14 +43,9 @@
               </table>
 
               <ul style="list-style:none; padding:0; margin:0; font-size:14px; line-height:1.6;">
-                {{#if priestName}}
-                  <li><strong>Priest:</strong> {{priestName}}</li>
-                {{/if}}
-                <li><strong>User:</strong> {{userName}} 
-                  {{#if userEmail}} ({{userEmail}}){{/if}}
-                  {{#if userPhone}} / {{userPhone}}{{/if}}
-                </li>
-                {{#if venueText}}<li><strong>Venue:</strong> {{venueText}}</li>{{/if}}
+                <li><strong>Priest:</strong> {{priestName}}</li>
+                <li><strong>User:</strong> {{userName}} ({{userEmail}}) / {{userPhone}}</li>
+                <li><strong>Venue:</strong> {{venueText}}</li>
                 <li><strong>Status:</strong> {{status}}</li>
               </ul>
 
@@ -58,7 +53,6 @@
           </tr>
 
           <!-- Action -->
-          {{#if adminUrl}}
           <tr>
             <td align="center" style="padding:16px 24px 32px;">
               <a href="{{adminUrl}}" 
@@ -67,7 +61,6 @@
               </a>
             </td>
           </tr>
-          {{/if}}
 
           <!-- Footer -->
           <tr>

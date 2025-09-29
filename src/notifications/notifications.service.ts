@@ -154,7 +154,8 @@ export class NotificationsService {
       },
     })
     if (!booking) return
-  
+    this.logger.debug('Booking Pooja Data:', booking.pooja)
+
     const ctx = await this.buildBookingCtx(booking)
   
     const userTo   = (booking.userEmail || booking.user?.email || '').trim() || undefined

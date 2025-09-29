@@ -66,34 +66,28 @@
                 <li class="li"><strong>Status:</strong> {{status}}</li>
                 <li class="li"><strong>Date:</strong> {{bookingDateText}}</li>
                 <li class="li"><strong>Time:</strong> {{startTimeText}} – {{endTimeText}}</li>
-                {{#if priestName}}
+                
                   <li class="li"><strong>Priest:</strong> {{priestName}}</li>
-                {{/if}}
-                <li class="li"><strong>Amount:</strong> {{amount}} {{currency}}</li>
-                {{#if durationMin}}
+               
+                  <li class="li"><strong>Amount:</strong> {{amount}} {{currency}}</li>
+               
                   <li class="li"><strong>Duration:</strong> {{durationMin}} minutes</li>
-                {{/if}}
-                {{#if prepTimeMin}}
-                  <li class="li"><strong>Preparation Time:</strong> {{prepTimeMin}} minutes</li>
-                {{/if}}
-                {{#if bufferMin}}
-                  <li class="li"><strong>Buffer Time:</strong> {{bufferMin}} minutes</li>
-                {{/if}}
-                {{#if includeFood}}
+                           
+             
                   <li class="li"><strong>Includes Food:</strong> Yes</li>
-                {{/if}}
-                {{#if includeHall}}
+         
+              
                   <li class="li"><strong>Includes Hall:</strong> Yes</li>
-                {{/if}}
-                {{#if materials}}
+             
+               
                   <li class="li"><strong>Materials:</strong> {{materials}}</li>
-                {{/if}}
-                {{#if notes}}
+           
+            
                   <li class="li"><strong>Notes:</strong> {{notes}}</li>
-                {{/if}}
-                {{#if venueText}}
+                
+               
                   <li class="li"><strong>Venue:</strong> {{venueText}}</li>
-                {{/if}}
+             
               </ul>
             </td>
           </tr>
