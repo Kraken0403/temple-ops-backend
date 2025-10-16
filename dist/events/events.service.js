@@ -133,10 +133,18 @@ let EventsService = EventsService_1 = class EventsService {
             mapLink: outsideVenue ? updateDto.mapLink ?? null : null,
             isInVenue: inVenue,
             isOutsideVenue: outsideVenue,
-            ...(updateDto.date !== undefined && { date: updateDto.date ? new Date(updateDto.date) : null }),
-            ...(updateDto.endDate !== undefined && { endDate: updateDto.endDate ? new Date(updateDto.endDate) : null }),
-            ...(updateDto.startTime !== undefined && { startTime: updateDto.startTime ? new Date(updateDto.startTime) : null }),
-            ...(updateDto.endTime !== undefined && { endTime: updateDto.endTime ? new Date(updateDto.endTime) : null }),
+            ...(updateDto.date !== undefined && {
+                date: updateDto.date ? new Date(updateDto.date) : null,
+            }),
+            ...(updateDto.endDate !== undefined && {
+                endDate: updateDto.endDate ? new Date(updateDto.endDate) : null,
+            }),
+            ...(updateDto.startTime !== undefined && {
+                startTime: updateDto.startTime ? new Date(updateDto.startTime) : null,
+            }),
+            ...(updateDto.endTime !== undefined && {
+                endTime: updateDto.endTime ? new Date(updateDto.endTime) : null,
+            }),
             ...(updateDto.tags !== undefined && { tags: updateDto.tags }),
             ...(updateDto.capacity !== undefined && { capacity: updateDto.capacity }),
             ...(updateDto.price !== undefined && { price: updateDto.price }),
@@ -144,25 +152,45 @@ let EventsService = EventsService_1 = class EventsService {
             ...(updateDto.contactInfo !== undefined && { contactInfo: updateDto.contactInfo }),
             ...(updateDto.isPublic !== undefined && { isPublic: updateDto.isPublic }),
         };
+        // ✅ Handle venue relation safely
         if (updateDto.venueId !== undefined) {
-            data.venueRel = updateDto.venueId
-                ? { connect: { id: updateDto.venueId } }
-                : { disconnect: true };
+            if (updateDto.venueId) {
+                data.venueRel = { connect: { id: updateDto.venueId } };
+            }
+            else {
+                data.venueRel = { disconnect: true };
+                data.venueId = null; // Prevent FK constraint error
+            }
         }
+        // ✅ Handle featured image safely
         if (updateDto.clearFeaturedMedia) {
             data.featuredMedia = { disconnect: true };
         }
-        else if (typeof updateDto.featuredMediaId === 'number') {
+        else if (typeof updateDto.featuredMediaId === "number") {
             data.featuredMedia = { connect: { id: updateDto.featuredMediaId } };
         }
-        return this.prisma.event.update({
-            where: { id },
-            data,
-            include: {
-                featuredMedia: true,
-                gallery: { include: { media: true }, orderBy: { sortOrder: 'asc' } },
-            },
-        });
+        try {
+            const updated = await this.prisma.event.update({
+                where: { id },
+                data,
+                include: {
+                    featuredMedia: true,
+                    gallery: { include: { media: true }, orderBy: { sortOrder: "asc" } },
+                },
+            });
+            this.logger.debug(`✅ Event ${id} updated successfully`);
+            return updated;
+        }
+        catch (err) {
+            if (err instanceof Error) {
+                this.logger.error(`❌ Prisma update failed for event ${id}: ${err.message}`, err.stack);
+                throw new common_1.BadRequestException(err.message);
+            }
+            else {
+                this.logger.error(`❌ Unknown error while updating event ${id}: ${String(err)}`);
+                throw new common_1.BadRequestException("Failed to update event. Check server logs.");
+            }
+        }
     }
     async remove(id) {
         await this.ensureExists(id);

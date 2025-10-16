@@ -45,4 +45,7 @@ export class CreateBookingDto {
 
   @IsOptional() @IsString()
   venueZip?: string
+
+  @IsOptional() @IsString()
+  couponCode?: string
 }

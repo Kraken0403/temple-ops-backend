@@ -1,4 +1,3 @@
-// src/events/events.service.ts
 import {
   Injectable,
   NotFoundException,
@@ -10,6 +9,8 @@ import { NotificationsService } from '../notifications/notifications.service'
 import { CreateEventDto } from './dto/create-event.dto'
 import { UpdateEventDto } from './dto/update-event.dto'
 import { BookEventDto } from './dto/book-event.dto'
+import { CouponsService } from '../coupons/coupons.service'
+import { ValidateKind } from '../coupons/dto/validate-coupon.dto'
 
 type EventWindowish = {
   date: Date
@@ -25,6 +26,7 @@ export class EventsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly notifications: NotificationsService,
+    private readonly coupons: CouponsService, // ✅ inject coupons
   ) {}
 
   /* ───────────────────────────── Helpers ───────────────────────────── */
@@ -165,11 +167,14 @@ export class EventsService {
   }
 
   async update(id: number, updateDto: UpdateEventDto) {
-    this.logger.debug(`Updating event ${id} with DTO: ${JSON.stringify(updateDto, null, 2)}`)
-    await this.ensureExists(id)
+    this.logger.debug(
+      `Updating event ${id} with DTO: ${JSON.stringify(updateDto, null, 2)}`
+    );
 
-    const inVenue = !!updateDto.venueId
-    const outsideVenue = !inVenue
+    await this.ensureExists(id);
+
+    const inVenue = !!updateDto.venueId;
+    const outsideVenue = !inVenue;
 
     const data: any = {
       ...(updateDto.name !== undefined && { name: updateDto.name }),
@@ -181,10 +186,18 @@ export class EventsService {
       isInVenue: inVenue,
       isOutsideVenue: outsideVenue,
 
-      ...(updateDto.date !== undefined && { date: updateDto.date ? new Date(updateDto.date) : null }),
-      ...(updateDto.endDate !== undefined && { endDate: updateDto.endDate ? new Date(updateDto.endDate) : null }),
-      ...(updateDto.startTime !== undefined && { startTime: updateDto.startTime ? new Date(updateDto.startTime) : null }),
-      ...(updateDto.endTime !== undefined && { endTime: updateDto.endTime ? new Date(updateDto.endTime) : null }),
+      ...(updateDto.date !== undefined && {
+        date: updateDto.date ? new Date(updateDto.date) : null,
+      }),
+      ...(updateDto.endDate !== undefined && {
+        endDate: updateDto.endDate ? new Date(updateDto.endDate) : null,
+      }),
+      ...(updateDto.startTime !== undefined && {
+        startTime: updateDto.startTime ? new Date(updateDto.startTime) : null,
+      }),
+      ...(updateDto.endTime !== undefined && {
+        endTime: updateDto.endTime ? new Date(updateDto.endTime) : null,
+      }),
 
       ...(updateDto.tags !== undefined && { tags: updateDto.tags }),
       ...(updateDto.capacity !== undefined && { capacity: updateDto.capacity }),
@@ -192,28 +205,49 @@ export class EventsService {
       ...(updateDto.organizer !== undefined && { organizer: updateDto.organizer }),
       ...(updateDto.contactInfo !== undefined && { contactInfo: updateDto.contactInfo }),
       ...(updateDto.isPublic !== undefined && { isPublic: updateDto.isPublic }),
-    }
+    };
 
+    // ✅ Handle venue relation safely
     if (updateDto.venueId !== undefined) {
-      data.venueRel = updateDto.venueId
-        ? { connect: { id: updateDto.venueId } }
-        : { disconnect: true }
+      if (updateDto.venueId) {
+        data.venueRel = { connect: { id: updateDto.venueId } };
+      } else {
+        data.venueRel = { disconnect: true };
+        data.venueId = null; // Prevent FK constraint error
+      }
     }
 
+    // ✅ Handle featured image safely
     if (updateDto.clearFeaturedMedia) {
-      data.featuredMedia = { disconnect: true }
-    } else if (typeof updateDto.featuredMediaId === 'number') {
-      data.featuredMedia = { connect: { id: updateDto.featuredMediaId } }
+      data.featuredMedia = { disconnect: true };
+    } else if (typeof updateDto.featuredMediaId === "number") {
+      data.featuredMedia = { connect: { id: updateDto.featuredMediaId } };
     }
 
-    return this.prisma.event.update({
-      where: { id },
-      data,
-      include: {
-        featuredMedia: true,
-        gallery: { include: { media: true }, orderBy: { sortOrder: 'asc' } },
-      },
-    })
+    try {
+      const updated = await this.prisma.event.update({
+        where: { id },
+        data,
+        include: {
+          featuredMedia: true,
+          gallery: { include: { media: true }, orderBy: { sortOrder: "asc" } },
+        },
+      });
+
+      this.logger.debug(`✅ Event ${id} updated successfully`);
+      return updated;
+    } catch (err: unknown) {
+      if (err instanceof Error) {
+        this.logger.error(
+          `❌ Prisma update failed for event ${id}: ${err.message}`,
+          err.stack
+        );
+        throw new BadRequestException(err.message);
+      } else {
+        this.logger.error(`❌ Unknown error while updating event ${id}: ${String(err)}`);
+        throw new BadRequestException("Failed to update event. Check server logs.");
+      }
+    }
   }
 
   async remove(id: number) {
@@ -250,16 +284,52 @@ export class EventsService {
       }
     }
 
+    // ✅ totals + coupon
+    const pax = Math.max(1, Number(dto.pax || 1))
+    const unit = ev.price ?? 0
+    const subtotal = unit * pax
+
+    let discount = 0
+    let total = subtotal
+    const code = (dto.couponCode || '').trim()
+
+    if (code) {
+      const quote = await this.coupons.validateAndQuote(code, {
+        kind: ValidateKind.EVENT,
+        eventId,
+        pax,
+      })
+      if (!quote.valid) throw new BadRequestException(quote.reason || 'Invalid coupon')
+
+      discount = quote.discount ?? 0
+      total    = quote.total ?? Math.max(0, subtotal - discount)
+    }
+
     const booking = await this.prisma.eventBooking.create({
       data: {
         event: { connect: { id: eventId } },
-        pax: dto.pax,
+        pax,
         userName: dto.userName ?? null,
         userEmail: dto.userEmail ?? null,
         userPhone: dto.userPhone ?? null,
         status: 'confirmed',
+
+        // ✅ write coupon/totals
+        couponCode: code || null,
+        discountAmount: discount,
+        subtotal,
+        total,
       },
     })
+
+    if (code) {
+      await this.coupons.recordRedemption({
+        couponCode: code,
+        amountApplied: discount,
+        userId: null, // pass a real userId if you attach users to event bookings
+        target: { type: 'event', eventBookingId: booking.id },
+      })
+    }
 
     // ✅ trigger notification
     try {

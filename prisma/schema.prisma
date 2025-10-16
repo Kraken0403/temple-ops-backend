@@ -7,6 +7,113 @@ generator client {
   provider = "prisma-client-js"
 }
 
+/// ───────────────── Coupons ─────────────────
+
+/// ───────────────── Coupons ─────────────────
+
+enum CouponType {
+  PERCENT
+  FIXED
+}
+
+model Coupon {
+  id          Int     @id @default(autoincrement())
+  code        String  @unique
+  description String? @db.VarChar(500)
+
+  type           CouponType
+  value          Float
+  maxDiscount    Float?
+  minOrderAmount Float?
+
+  startsAt  DateTime?
+  endsAt    DateTime?
+  isActive  Boolean   @default(true)
+  stackable Boolean   @default(false)
+
+  usageLimit        Int?
+  usageLimitPerUser Int?
+
+  // Scoping – if none linked, coupon is global
+  events    CouponEvent[]         @relation("CouponToEvent")
+  poojas    CouponPooja[]         @relation("CouponToPooja")
+  poojaCats CouponPoojaCategory[] @relation("CouponToPoojaCategory")
+
+  // Redemptions
+  redemptions CouponRedemption[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("coupon")
+}
+
+model CouponEvent {
+  // back to Coupon (name MUST match Coupon.events relation)
+  coupon   Coupon @relation("CouponToEvent", fields: [couponId], references: [id], onDelete: Cascade)
+  couponId Int
+
+  // back to Event (name MUST match Event.couponScopes relation)
+  event   Event @relation("EventToCoupon", fields: [eventId], references: [id], onDelete: Cascade)
+  eventId Int
+
+  @@id([couponId, eventId])
+  @@index([eventId])
+  @@map("couponevent")
+}
+
+model CouponPooja {
+  coupon   Coupon @relation("CouponToPooja", fields: [couponId], references: [id], onDelete: Cascade)
+  couponId Int
+
+  pooja   Pooja @relation("PoojaToCoupon", fields: [poojaId], references: [id], onDelete: Cascade)
+  poojaId Int
+
+  @@id([couponId, poojaId])
+  @@index([poojaId])
+  @@map("couponpooja")
+}
+
+model CouponPoojaCategory {
+  coupon   Coupon @relation("CouponToPoojaCategory", fields: [couponId], references: [id], onDelete: Cascade)
+  couponId Int
+
+  poojaCategory   PoojaCategory @relation("PoojaCategoryToCoupon", fields: [poojaCategoryId], references: [id], onDelete: Cascade)
+  poojaCategoryId Int
+
+  @@id([couponId, poojaCategoryId])
+  @@index([poojaCategoryId])
+  @@map("couponpoojacategory")
+}
+
+enum RedemptionTargetType {
+  EVENT_BOOKING
+  POOJA_BOOKING
+}
+
+model CouponRedemption {
+  id       Int    @id @default(autoincrement())
+  coupon   Coupon @relation(fields: [couponId], references: [id], onDelete: Cascade)
+  couponId Int
+
+  user   User? @relation("UserCouponRedemptions", fields: [userId], references: [id])
+  userId Int?
+
+  targetType     RedemptionTargetType
+  eventBooking   EventBooking?        @relation("EventBookingCouponRedemptions", fields: [eventBookingId], references: [id], onDelete: SetNull)
+  eventBookingId Int?
+  poojaBooking   Booking?             @relation("PoojaBookingCouponRedemptions", fields: [poojaBookingId], references: [id], onDelete: SetNull)
+  poojaBookingId Int?
+
+  amountApplied Float
+  createdAt     DateTime @default(now())
+
+  @@unique([couponId, eventBookingId])
+  @@unique([couponId, poojaBookingId])
+  @@index([userId])
+  @@map("couponredemption")
+}
+
 /**
  * ───────────────── Media & Albums ─────────────────
  */
@@ -75,7 +182,7 @@ model AlbumItem {
  */
 
 model Priest {
-  id             Int                @id @default(autoincrement())
+  id             Int     @id @default(autoincrement())
   name           String
   specialty      String?
   contactNo      String?
@@ -84,9 +191,9 @@ model Priest {
   address        String?
   qualifications Json
 
-  slots          AvailabilitySlot[]
-  bookings       Booking[]
-  poojas         Pooja[]            @relation("PoojaPriests")
+  slots    AvailabilitySlot[]
+  bookings Booking[]
+  poojas   Pooja[]            @relation("PoojaPriests")
 
   // optional user reference
   user User?
@@ -113,8 +220,8 @@ model Pooja {
   isInVenue      Boolean
   isOutsideVenue Boolean
 
-    /// NEW: link to a saved Venue when isInVenue = true
-  venueId  Int?
+  /// NEW: link to a saved Venue when isInVenue = true
+  venueId Int?
   venue   Venue? @relation("VenuePoojas", fields: [venueId], references: [id], onDelete: SetNull)
 
   venueAddress String?
@@ -136,6 +243,8 @@ model Pooja {
   // many-to-many to Priest
   priests  Priest[]  @relation("PoojaPriests")
   bookings Booking[]
+
+  couponScopes CouponPooja[] @relation("PoojaToCoupon")
 
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
@@ -225,6 +334,14 @@ model Booking {
 
   createdAt DateTime @default(now())
 
+  discountAmount Float?  @default(0)
+  couponCode     String? @db.VarChar(64)
+  subtotal       Float?
+  total          Float?
+
+  // coupon redemptions back-relation
+  couponRedemptions CouponRedemption[] @relation("PoojaBookingCouponRedemptions")
+
   @@map("booking")
 }
 
@@ -284,6 +401,8 @@ model User {
   sponsorshipBookings SponsorshipBooking[]
   poojaBookings       Booking[]
 
+  couponRedemptions CouponRedemption[] @relation("UserCouponRedemptions")
+
   @@map("user")
 }
 
@@ -307,29 +426,28 @@ model UserRole {
 }
 
 model Event {
-  id          Int       @id @default(autoincrement())
+  id          Int     @id @default(autoincrement())
   name        String
-  description String?   @db.VarChar(1000)
+  description String? @db.VarChar(1000)
 
   // Outside venue (legacy fields kept as-is)
-  venue       String?                         // outside-venue address/name
-  mapLink     String?                        // outside-venue map link
+  venue   String? // outside-venue address/name
+  mapLink String? // outside-venue map link
 
-
-  venueId     Int?                           // NEW
-  venueRel    Venue? @relation("VenueEvents", fields: [venueId], references: [id], onDelete: SetNull) // NEW
+  venueId  Int? // NEW
+  venueRel Venue? @relation("VenueEvents", fields: [venueId], references: [id], onDelete: SetNull) // NEW
 
   // Flags (mirror Pooja)
-  isInVenue      Boolean  @default(false)    // NEW
-  isOutsideVenue Boolean  @default(true)     // NEW
+  isInVenue      Boolean @default(false) // NEW
+  isOutsideVenue Boolean @default(true) // NEW
 
-  date        DateTime
-  endDate     DateTime?
-  startTime   DateTime?
-  endTime     DateTime?
-  tags        Json?
-  capacity    Int?
-  price       Float?
+  date      DateTime
+  endDate   DateTime?
+  startTime DateTime?
+  endTime   DateTime?
+  tags      Json?
+  capacity  Int?
+  price     Float?
 
   organizer   String?
   contactInfo String?
@@ -347,9 +465,10 @@ model Event {
   // Gallery
   gallery EventMedia[]
 
+  couponScopes CouponEvent[] @relation("EventToCoupon")
+
   @@map("event")
 }
-
 
 model EventBooking {
   id      Int   @id @default(autoincrement())
@@ -368,6 +487,14 @@ model EventBooking {
   userEmail String?
   userPhone String?
 
+  subtotal       Float?
+  discountAmount Float?  @default(0)
+  couponCode     String? @db.VarChar(64)
+  total          Float?
+
+  // coupon redemptions back-relation
+  couponRedemptions CouponRedemption[] @relation("EventBookingCouponRedemptions")
+
   @@map("eventbooking")
 }
 
@@ -378,25 +505,40 @@ model SponsorshipType {
   createdAt   DateTime @default(now())
   price       Float
 
+  // 🆕 availability is on the TYPE
+  startsAt DateTime?
+  endsAt   DateTime?
+  isActive Boolean   @default(true)
+
+  // 🆕 default slots for “independent” usage (eventId = null)
+  defaultMaxSlots Int? // if null, treat as not independently bookable unless you explicitly create independent row
+
   eventSponsorships EventSponsorship[]
 
   @@map("sponsorshiptype")
 }
 
 model EventSponsorship {
-  id      Int   @id @default(autoincrement())
-  event   Event? @relation(fields: [eventId], references: [id])
+  id Int @id @default(autoincrement())
+
+  // Null = independent sponsorship (not tied to any event)
   eventId Int?
+  event   Event? @relation(fields: [eventId], references: [id], onDelete: SetNull)
 
-  sponsorshipType   SponsorshipType @relation(fields: [sponsorshipTypeId], references: [id])
   sponsorshipTypeId Int
+  sponsorshipType   SponsorshipType @relation(fields: [sponsorshipTypeId], references: [id])
 
+  // Per-assignment price (defaults to type.price when created)
   price    Float
+  // How many sponsors can buy this assignment
   maxSlots Int   @default(1)
 
   bookings SponsorshipBooking[]
 
+  // One row per (eventId, type) pair. Multiple NULLs allowed by SQL; enforce “one independent per type” in service.
   @@unique([eventId, sponsorshipTypeId])
+  @@index([eventId])
+  @@index([sponsorshipTypeId])
   @@map("eventsponsorship")
 }
 
@@ -408,7 +550,7 @@ model SponsorshipBooking {
   eventSponsorship   EventSponsorship @relation(fields: [eventSponsorshipId], references: [id])
   eventSponsorshipId Int
 
-  status       String  @default("pending") // pending, confirmed, failed
+  status       String @default("pending") // pending, confirmed, failed
   sponsorName  String
   sponsorEmail String
   sponsorPhone String
@@ -426,7 +568,8 @@ model Settings {
   id        Int      @id @default(1)
   currency  String   @default("INR")
   timezone  String   @default("Asia/Kolkata")
-  updatedAt DateTime @updatedAt @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+
   @@map("settings")
 }
 
@@ -467,90 +610,90 @@ model EventMedia {
 }
 
 model Venue {
-  id        Int      @id @default(autoincrement())
-  title     String
-  address   String   @db.VarChar(1000)
-  zipcode   String   @db.VarChar(20)
-  mapLink   String?  @db.VarChar(1000)
+  id      Int     @id @default(autoincrement())
+  title   String
+  address String  @db.VarChar(1000)
+  zipcode String  @db.VarChar(20)
+  mapLink String? @db.VarChar(1000)
 
   isActive  Boolean  @default(true)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  poojas    Pooja[]  @relation("VenuePoojas")
-  events    Event[]  @relation("VenueEvents")
+  poojas Pooja[] @relation("VenuePoojas")
+  events Event[] @relation("VenueEvents")
 
   @@map("venue")
 }
 
 model PoojaCategory {
-  id          Int       @id @default(autoincrement())
-  name        String    @unique
-  slug        String    @unique
-  description String?   @db.VarChar(500)
-  isActive    Boolean   @default(true)
-  sortOrder   Int       @default(0)
+  id          Int     @id @default(autoincrement())
+  name        String  @unique
+  slug        String  @unique
+  description String? @db.VarChar(500)
+  isActive    Boolean @default(true)
+  sortOrder   Int     @default(0)
 
   // m:n to Pooja
-  poojas      Pooja[]   @relation("PoojaCategories")
+  poojas Pooja[] @relation("PoojaCategories")
 
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
+  couponScopes CouponPoojaCategory[] @relation("PoojaCategoryToCoupon")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@map("poojacategory")
 }
 
 model Category {
-  id        Int       @id @default(autoincrement())
+  id        Int      @id @default(autoincrement())
   name      String
-  slug      String    @unique
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
+  slug      String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  bhajans   Bhajan[]
-  blogs     Blog[]
+  bhajans Bhajan[]
+  blogs   Blog[]
+
   @@map("category")
 }
 
 model Bhajan {
-  id            Int       @id @default(autoincrement())
-  title         String
-  slug          String    @unique
-  language      String?
-  categoryId    Int?
-  category      Category? @relation(fields: [categoryId], references: [id])
-  pdfUrl        String
-  lyricsHtml    String?
-  audioUrl      String?
-  thumbnailUrl  String?
-  tagsJson      String?   // JSON stringified array of strings
-  isPublished   Boolean   @default(true)
-  publishedAt   DateTime? @default(now())
-  viewsCount    Int       @default(0)
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
-
-  @@map("bhajan")
-
-}
-
-model Blog {
   id           Int       @id @default(autoincrement())
   title        String
   slug         String    @unique
-  excerpt      String?
-  coverImageUrl String?
-  bodyHtml     String?
-  tagsJson     String?
+  language     String?
   categoryId   Int?
   category     Category? @relation(fields: [categoryId], references: [id])
-  authorName   String?
+  pdfUrl       String
+  lyricsHtml   String?
+  audioUrl     String?
+  thumbnailUrl String?
+  tagsJson     String? // JSON stringified array of strings
   isPublished  Boolean   @default(true)
   publishedAt  DateTime? @default(now())
+  viewsCount   Int       @default(0)
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
 
-  @@map("blog")
-
+  @@map("bhajan")
 }
 
+model Blog {
+  id            Int       @id @default(autoincrement())
+  title         String
+  slug          String    @unique
+  excerpt       String?
+  coverImageUrl String?
+  bodyHtml      String?
+  tagsJson      String?
+  categoryId    Int?
+  category      Category? @relation(fields: [categoryId], references: [id])
+  authorName    String?
+  isPublished   Boolean   @default(true)
+  publishedAt   DateTime? @default(now())
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@map("blog")
+}

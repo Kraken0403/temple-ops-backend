@@ -8,6 +8,4 @@ export class CreateDonationItemDto {
   @IsNumber()
   amount!: number
 
-  @IsString()
-  currency!: string
 }

@@ -1,25 +1,32 @@
 // src/auth/jwt.strategy.ts
-import { Injectable } from '@nestjs/common';
-import { PassportStrategy } from '@nestjs/passport';
-import { Strategy, ExtractJwt } from 'passport-jwt';
+import { Injectable } from '@nestjs/common'
+import { PassportStrategy } from '@nestjs/passport'
+import { ExtractJwt, Strategy } from 'passport-jwt'
+
+type JwtPayload = {
+  sub: number
+  email: string
+  roles: string[]
+  priestId?: number | null
+}
 
 @Injectable()
-export class JwtStrategy extends PassportStrategy(Strategy) {
+export class JwtStrategy extends PassportStrategy(Strategy, 'jwt') {
   constructor() {
     super({
-      // grab the token from the Authorization header as “Bearer …”
       jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
-      // assert that process.env.JWT_SECRET is a string
-      secretOrKey:    process.env.JWT_SECRET!, 
-    });
+      secretOrKey: process.env.JWT_SECRET!,
+      ignoreExpiration: false,
+    })
   }
 
-  // this runs after the token is verified
-  async validate(payload: { sub: number; email: string; roles: string[] }) {
+  async validate(payload: JwtPayload) {
+    // This becomes req.user
     return {
-      userId: payload.sub,
-      email:  payload.email,
-      roles:  payload.roles,
-    };
+      id: payload.sub,
+      email: payload.email,
+      roles: payload.roles || [],
+      priestId: payload.priestId ?? null,
+    }
   }
 }

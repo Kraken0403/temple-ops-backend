@@ -1,14 +1,18 @@
-// src/sponsorship/dto/update-event-sponsorship.dto.ts
+// src/sponsorship/dto/create-standalone-sponsorship.dto.ts
 import { IsInt, Min, IsNumber, IsOptional, IsDateString, IsBoolean } from 'class-validator'
 
-export class UpdateEventSponsorshipDto {
-  @IsOptional() @IsInt() @Min(1)
-  maxSlots?: number
+export class CreateStandaloneSponsorshipDto {
+  @IsInt()
+  sponsorshipTypeId!: number
 
-  @IsOptional() @IsNumber() @Min(0)
+  @IsInt()
+  @Min(1)
+  maxSlots!: number
+
+  @IsNumber()
+  @Min(0)
   price?: number
 
-  // 🆕
   @IsOptional() @IsDateString()
   startsAt?: string
 
