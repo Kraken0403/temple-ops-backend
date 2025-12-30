@@ -16,6 +16,11 @@ export class UpdatePoojaDto {
   @IsOptional() @Type(() => Number) @IsNumber() prepTimeMin?: number;
   @IsOptional() @Type(() => Number) @IsNumber() bufferMin?: number;
 
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  outsideAmount?: number | null;
+
   @IsOptional() @Type(() => Boolean) @IsBoolean() isInVenue?: boolean;
   @IsOptional() @Type(() => Boolean) @IsBoolean() isOutsideVenue?: boolean;
 

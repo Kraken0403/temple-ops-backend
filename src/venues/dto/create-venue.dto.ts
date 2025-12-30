@@ -1,18 +1,42 @@
-import { IsBoolean, IsNotEmpty, IsOptional, IsString, MaxLength } from 'class-validator'
+import {
+  IsBoolean,
+  IsNotEmpty,
+  IsOptional,
+  IsString,
+  MaxLength,
+  IsNumber,
+} from 'class-validator'
 
 export class CreateVenueDto {
-  @IsString() @IsNotEmpty()
+  @IsString()
+  @IsNotEmpty()
   title!: string
 
-  @IsString() @IsNotEmpty() @MaxLength(1000)
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(1000)
   address!: string
 
-  @IsString() @IsNotEmpty() @MaxLength(20)
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(20)
   zipcode!: string
 
-  @IsOptional() @IsString() @MaxLength(1000)
+  @IsOptional()
+  @IsString()
+  @MaxLength(1000)
   mapLink?: string
 
-  @IsOptional() @IsBoolean()
+  @IsOptional()
+  @IsBoolean()
   isActive?: boolean
+
+  // ✅ ADD THESE TWO LINES ONLY
+  @IsOptional()
+  @IsNumber()
+  latitude?: number
+
+  @IsOptional()
+  @IsNumber()
+  longitude?: number
 }

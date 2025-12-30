@@ -209,6 +209,7 @@ model Pooja {
   id     Int    @id @default(autoincrement())
   name   String
   amount Float
+  outsideAmount     Float?
 
   date DateTime?
   time DateTime?
@@ -261,6 +262,13 @@ enum SlotType {
   HOLIDAY
 }
 
+enum BookingStatus {
+  pending
+  confirmed
+  cancelled
+  completed
+}
+
 model AvailabilitySlot {
   id       Int    @id @default(autoincrement())
   priest   Priest @relation(fields: [priestId], references: [id])
@@ -303,7 +311,8 @@ model RolePermission {
 }
 
 model Booking {
-  id     Int   @id @default(autoincrement())
+  id Int @id @default(autoincrement())
+
   userId Int?
   user   User? @relation(fields: [userId], references: [id])
 
@@ -312,19 +321,16 @@ model Booking {
   pooja    Pooja  @relation(fields: [poojaId], references: [id])
   priest   Priest @relation(fields: [priestId], references: [id])
 
-  // user-chosen date/time
   bookingDate DateTime
   start       DateTime
   end         DateTime
 
   status String @default("confirmed")
 
-  // 🔒 immutable snapshots (do NOT depend on live pooja/priest)
   amountAtBooking     Float
   poojaNameAtBooking  String
   priestNameAtBooking String?
 
-  // guest details / venue
   userName     String?
   userEmail    String?
   userPhone    String?
@@ -332,16 +338,29 @@ model Booking {
   venueState   String?
   venueZip     String?
 
-  createdAt DateTime @default(now())
+  venueLat Float?
+  venueLng Float?
+
+  // travel snapshot
+  travelDistance    Float?
+  travelCost        Float?
+  travelRate        Float?
+  travelUnit        String? // "mile" | "km"
+  freeTravelUnits   Float?
+  travelDurationMin Int?
+  travelAvgSpeed    Float?
 
   discountAmount Float?  @default(0)
   couponCode     String? @db.VarChar(64)
   subtotal       Float?
   total          Float?
 
-  // coupon redemptions back-relation
+  createdAt DateTime @default(now())
+
   couponRedemptions CouponRedemption[] @relation("PoojaBookingCouponRedemptions")
 
+  @@index([priestId])
+  @@index([bookingDate])
   @@map("booking")
 }
 
@@ -565,12 +584,22 @@ model SponsorshipBooking {
 }
 
 model Settings {
-  id        Int      @id @default(1)
-  currency  String   @default("INR")
-  timezone  String   @default("Asia/Kolkata")
-  updatedAt DateTime @default(now()) @updatedAt
+  id Int @id @default(1)
 
-  @@map("settings")
+  currency String @default("USD")
+  timezone String @default("America/New_York")
+
+  travelRate      Float
+  travelUnit      String @default("mile")
+  freeTravelUnits Float
+  maxServiceUnits Float
+  travelAvgSpeed  Float  @default(25)
+
+  // ✅ many-to-one relation (CORRECT)
+  primaryVenueId Int?
+  primaryVenue   Venue? @relation(fields: [primaryVenueId], references: [id])
+
+  updatedAt DateTime @updatedAt
 }
 
 /**
@@ -616,12 +645,18 @@ model Venue {
   zipcode String  @db.VarChar(20)
   mapLink String? @db.VarChar(1000)
 
+  latitude  Float?
+  longitude Float?
+
   isActive  Boolean  @default(true)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   poojas Pooja[] @relation("VenuePoojas")
   events Event[] @relation("VenueEvents")
+
+  // ✅ opposite side (array = many)
+  settings Settings[]
 
   @@map("venue")
 }

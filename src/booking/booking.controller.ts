@@ -1,4 +1,3 @@
-// src/booking/booking.controller.ts
 import {
   Controller,
   Post,
@@ -20,10 +19,10 @@ import { AuthGuard } from '@nestjs/passport'
 import { BookingService } from './booking.service'
 import { CreateBookingDto } from './dto/create-booking.dto'
 import { UpdateBookingDto } from './dto/update-booking.dto'
+import { QuoteBookingDto } from './dto/quote-booking.dto'
 import { PrismaService } from '../prisma.service'
 
 @Controller('booking')
-@UseGuards(AuthGuard('jwt')) // ensures req.user is populated
 export class BookingController {
   private readonly logger = new Logger(BookingController.name)
 
@@ -32,22 +31,34 @@ export class BookingController {
     private readonly prisma: PrismaService,
   ) {}
 
-  /* ─────────────── Create / Read standard ─────────────── */
+  /* ─────────────── PUBLIC (GUEST ALLOWED) ─────────────── */
 
-  @Post()
-  create(@Body() dto: CreateBookingDto) {
-    return this.svc.create(dto)
+  /**
+   * ✅ Pricing preview
+   * Guests + logged-in users
+   */
+  @Post('quote')
+  quote(@Body() dto: QuoteBookingDto) {
+    return this.svc.quote(dto)
   }
 
   /**
-   * IMPORTANT: Place the `/my` route BEFORE `/:id`
-   * so `"my"` won't be parsed by ParseIntPipe.
-   *
+   * ✅ Create booking
+   * Guests + logged-in users
+   */
+  @Post()
+  create(@Body() dto: CreateBookingDto) {
+    // console.log('📥 CREATE BOOKING DTO:', dto)
+    return this.svc.create(dto)
+  }
+
+  /* ─────────────── AUTH REQUIRED ─────────────── */
+
+  /**
    * Priest “My Bookings”
-   * - Non-admins: see only your bookings, resolved by users.priestId (or fallback via email).
-   * - Admins: can pass `?priestId=123` to view a specific priest’s bookings.
    */
   @Get('my')
+  @UseGuards(AuthGuard('jwt'))
   async findMine(@Req() req: any, @Query('priestId') priestIdQuery?: string) {
     const user = req?.user
     this.logger.debug(`booking/my user: ${JSON.stringify(user)}`)
@@ -55,6 +66,7 @@ export class BookingController {
     const isAdmin = await this.isAdminDb(user?.id)
 
     let priestId: number | null = null
+
     if (isAdmin && priestIdQuery) {
       const parsed = Number(priestIdQuery)
       if (!Number.isFinite(parsed) || parsed <= 0) {
@@ -67,48 +79,70 @@ export class BookingController {
 
     if (!priestId) {
       throw new ForbiddenException(
-        'Your account is not linked to a Priest profile. Ask an admin to set users.priestId for your user.'
+        'Your account is not linked to a Priest profile.'
       )
     }
 
-    // Use the service so we get timezone conversions like other endpoints
     return this.svc.findAllByPriest(priestId)
   }
 
-  // Admin/staff overview (or keep open if you intend)
+  /**
+   * Admin / staff overview
+   */
   @Get()
+  @UseGuards(AuthGuard('jwt'))
   findAll() {
     return this.svc.findAll()
   }
 
+  /**
+   * View single booking (admin / priest)
+   */
   @Get(':id')
+  @UseGuards(AuthGuard('jwt'))
   async findOne(@Param('id', ParseIntPipe) id: number) {
     const booking = await this.svc.findOne(id)
     if (!booking) throw new NotFoundException('Booking not found')
     return booking
   }
 
-  /* ─────────────── Update / Delete ─────────────── */
-
+  /**
+   * Update booking
+   */
   @Patch(':id')
-  async update(@Param('id', ParseIntPipe) id: number, @Body() dto: UpdateBookingDto) {
+  @UseGuards(AuthGuard('jwt'))
+  async update(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: UpdateBookingDto,
+  ) {
     const updated = await this.svc.update(id, dto)
     if (!updated) throw new NotFoundException('Booking not found')
     return updated
   }
 
+  /**
+   * Update booking status
+   */
   @Patch(':id/status/:status')
-  async updateStatus(@Param('id', ParseIntPipe) id: number, @Param('status') status: string) {
+  @UseGuards(AuthGuard('jwt'))
+  updateStatus(
+    @Param('id', ParseIntPipe) id: number,
+    @Param('status') status: string,
+  ) {
     return this.svc.update(id, { status } as UpdateBookingDto)
   }
 
+  /**
+   * Delete booking
+   */
   @Delete(':id')
+  @UseGuards(AuthGuard('jwt'))
   async remove(@Param('id', ParseIntPipe) id: number) {
     await this.svc.remove(id)
     return { ok: true }
   }
 
-  /* ─────────────── Helpers (DB-based) ─────────────── */
+  /* ─────────────── Helpers ─────────────── */
 
   private async isAdminDb(userId?: number | string | null): Promise<boolean> {
     if (!userId) return false
@@ -119,7 +153,8 @@ export class BookingController {
       where: { userId: uid },
       include: { role: true },
     })
-    return roles.some(r => r.role?.name?.toLowerCase?.() === 'admin')
+
+    return roles.some(r => r.role?.name?.toLowerCase() === 'admin')
   }
 
   private async resolvePriestIdFromDb(user: any): Promise<number | null> {
@@ -131,16 +166,17 @@ export class BookingController {
       where: { id: uid },
       select: { priestId: true, email: true },
     })
-    if (u?.priestId) return Number(u.priestId)
 
-    // Optional email fallback
+    if (u?.priestId) return u.priestId
+
     if (u?.email) {
       const p = await this.prisma.priest.findFirst({
         where: { email: u.email },
         select: { id: true },
       })
-      if (p?.id) return p.id
+      return p?.id ?? null
     }
+
     return null
   }
 }

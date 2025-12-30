@@ -2,7 +2,8 @@ import {
   IsInt, 
   IsDateString, 
   IsOptional, 
-  IsString 
+  IsString,
+  IsNumber, Min, Max
 } from 'class-validator'
 
 export class CreateBookingDto {
@@ -46,6 +47,27 @@ export class CreateBookingDto {
   @IsOptional() @IsString()
   venueZip?: string
 
+    // 🆕 Map pin (Outside venue)
+  @IsOptional()
+  @IsNumber({ maxDecimalPlaces: 8 })
+  @Min(-90)
+  @Max(90)
+  venueLat?: number
+
+  @IsOptional()
+  @IsNumber({ maxDecimalPlaces: 8 })
+  @Min(-180)
+  @Max(180)
+  venueLng?: number
+
+  // 🆕 Optional UI preview (backend will re-calc)
+  @IsOptional()
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0)
+  travelDistanceKm?: number
+
   @IsOptional() @IsString()
   couponCode?: string
+
+  
 }

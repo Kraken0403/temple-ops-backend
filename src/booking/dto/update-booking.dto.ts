@@ -6,6 +6,7 @@ import {
   IsString,
   IsIn,
   IsEmail,
+  IsNumber, Min, Max
 } from 'class-validator'
 
 export class UpdateBookingDto {
@@ -47,6 +48,24 @@ export class UpdateBookingDto {
 
   @IsOptional() @IsString()
   venueZip?: string
+
+  @IsOptional()
+  @IsNumber({ maxDecimalPlaces: 8 })
+  @Min(-90)
+  @Max(90)
+  venueLat?: number
+
+  @IsOptional()
+  @IsNumber({ maxDecimalPlaces: 8 })
+  @Min(-180)
+  @Max(180)
+  venueLng?: number
+
+  @IsOptional()
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0)
+  travelDistanceKm?: number
+
 
   /** Optional status update */
   @IsOptional() @IsIn(['pending','confirmed','canceled','completed'])

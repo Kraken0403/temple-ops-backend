@@ -7,7 +7,6 @@ export class CreatePoojaJsonDto {
   @IsArray() @Type(() => Number) @IsNumber({}, { each: true })
   priestIds!: number[];
 
-  // ⬇️ NEW
   @IsOptional()
   @IsArray()
   @Type(() => Number)
@@ -21,6 +20,12 @@ export class CreatePoojaJsonDto {
 
   @Type(() => Boolean) @IsBoolean() isInVenue!: boolean;
   @Type(() => Boolean) @IsBoolean() isOutsideVenue!: boolean;
+
+  
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  outsideAmount?: number | null;
 
   @IsOptional() @Type(() => Number) @IsNumber()
   venueId?: number;

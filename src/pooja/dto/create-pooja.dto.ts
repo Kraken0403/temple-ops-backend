@@ -20,6 +20,11 @@ export class CreatePoojaDto {
   /** In-venue: select from saved venues */
   @IsOptional() @Type(() => Number) @IsNumber()
   venueId?: number;
+  
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  outsideAmount?: number | null;
 
   /** Outside-venue: free text + map link */
   @IsOptional() @IsDateString() date?: string;
