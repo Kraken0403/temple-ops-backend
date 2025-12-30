@@ -600,6 +600,7 @@ model Settings {
   primaryVenue   Venue? @relation(fields: [primaryVenueId], references: [id])
 
   updatedAt DateTime @updatedAt
+  @@map("settings")
 }
 
 /**
