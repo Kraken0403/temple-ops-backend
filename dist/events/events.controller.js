@@ -22,23 +22,42 @@ let EventsController = class EventsController {
     constructor(svc) {
         this.svc = svc;
     }
-    create(dto) { return this.svc.create(dto); }
-    findAll() { return this.svc.findAll(); }
-    findOne(id) { return this.svc.findOne(id); }
+    /* ───────────────────────── Events ───────────────────────── */
+    create(dto) {
+        return this.svc.create(dto);
+    }
+    findAll() {
+        return this.svc.findAll();
+    }
+    findOne(id) {
+        return this.svc.findOne(id);
+    }
     update(id, dto) {
         return this.svc.update(id, dto);
     }
-    remove(id) { return this.svc.remove(id); }
-    // Bookings
-    bookGuest(id, dto) {
-        return this.svc.bookEventAsGuest(id, dto);
+    remove(id) {
+        return this.svc.remove(id);
     }
+    /* ─────────────────────── Occurrence Bookings ─────────────────────── */
+    /**
+     * Guest booking for a specific event occurrence
+     * IMPORTANT: booking is done against occurrenceId, not eventId
+     */
+    bookOccurrenceAsGuest(occurrenceId, dto) {
+        return this.svc.bookOccurrenceAsGuest(occurrenceId, dto);
+    }
+    /* ─────────────────────── Event Bookings (Admin) ─────────────────────── */
+    /**
+     * Fetch all bookings for an event (across all occurrences)
+     */
     bookings(id) {
         return this.svc.findBookings(id);
     }
-    // Media helpers
+    /* ─────────────────────── Media Helpers ─────────────────────── */
     setFeatured(id, mediaId) {
-        if (mediaId !== null && mediaId !== undefined && Number.isNaN(Number(mediaId))) {
+        if (mediaId !== null &&
+            mediaId !== undefined &&
+            Number.isNaN(Number(mediaId))) {
             throw new common_1.BadRequestException('mediaId must be a number or null');
         }
         return this.svc.setFeaturedMedia(id, mediaId ?? null);
@@ -49,6 +68,10 @@ let EventsController = class EventsController {
     reorderGallery(id, orders) {
         return this.svc.reorderGallery(id, orders ?? []);
     }
+    // @Get(':id/occurrences')
+    //   getOccurrences(@Param('id', ParseIntPipe) id: number) {
+    //     return this.svc.findOccurrences(id)
+    //   }
     removeGallery(id, mediaId) {
         return this.svc.removeFromGallery(id, mediaId);
     }
@@ -90,13 +113,13 @@ __decorate([
     __metadata("design:returntype", void 0)
 ], EventsController.prototype, "remove", null);
 __decorate([
-    (0, common_1.Post)(':id/book'),
-    __param(0, (0, common_1.Param)('id', common_1.ParseIntPipe)),
+    (0, common_1.Post)('occurrences/:occurrenceId/book'),
+    __param(0, (0, common_1.Param)('occurrenceId', common_1.ParseIntPipe)),
     __param(1, (0, common_1.Body)()),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", [Number, book_event_dto_1.BookEventDto]),
     __metadata("design:returntype", void 0)
-], EventsController.prototype, "bookGuest", null);
+], EventsController.prototype, "bookOccurrenceAsGuest", null);
 __decorate([
     (0, common_1.Get)(':id/bookings'),
     __param(0, (0, common_1.Param)('id', common_1.ParseIntPipe)),

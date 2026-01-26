@@ -30,4 +30,9 @@ __decorate([
     (0, class_validator_1.IsString)(),
     __metadata("design:type", String)
 ], UpdateSponsorshipBookingDto.prototype, "sponsorPhone", void 0);
+__decorate([
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsIn)(['pending', 'confirmed', 'failed']),
+    __metadata("design:type", String)
+], UpdateSponsorshipBookingDto.prototype, "status", void 0);
 //# sourceMappingURL=update-sponsorship-booking.dto.js.map

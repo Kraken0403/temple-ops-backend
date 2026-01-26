@@ -7,9 +7,75 @@ generator client {
   provider = "prisma-client-js"
 }
 
-/// ───────────────── Coupons ─────────────────
+enum NewsletterSource {
+  FOOTER
+  BOOKING
+  EVENT
+  OTHER
+}
 
-/// ───────────────── Coupons ─────────────────
+enum PaymentPurpose {
+  EVENT
+  SERVICES
+  DONATION
+  SPONSORSHIP
+}
+
+enum PaymentProvider {
+  PAYPAL
+}
+
+enum PaymentStatus {
+  PENDING
+  CREATED
+  APPROVED
+  COMPLETED
+  FAILED
+  CANCELLED
+  REFUNDED
+}
+
+model Payment {
+  id Int @id @default(autoincrement())
+
+  purpose     String
+  referenceId Int
+
+  amount   Float
+  currency String
+  provider String @default("PAYPAL")
+
+  providerOrderId String?
+  providerTxnId   String?
+
+  status PaymentStatus
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // 👇 REQUIRED inverse field (NO FK HERE)
+  eventBooking EventBooking? @relation("EventBookingPayment")
+
+  @@index([purpose, referenceId])
+  @@map("payment")
+}
+
+enum SubscriberStatus {
+  ACTIVE
+  UNSUBSCRIBED
+}
+
+model NewsletterSubscriber {
+  id     Int              @id @default(autoincrement())
+  email  String           @unique
+  source NewsletterSource
+  status SubscriberStatus @default(ACTIVE)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("newslettersubscriber")
+}
 
 enum CouponType {
   PERCENT
@@ -114,10 +180,6 @@ model CouponRedemption {
   @@map("couponredemption")
 }
 
-/**
- * ───────────────── Media & Albums ─────────────────
- */
-
 model MediaAsset {
   id         Int      @id @default(autoincrement())
   url        String   @unique
@@ -177,10 +239,6 @@ model AlbumItem {
   @@map("albumitem")
 }
 
-/**
- * ───────────────── Core Domain ─────────────────
- */
-
 model Priest {
   id             Int     @id @default(autoincrement())
   name           String
@@ -206,10 +264,10 @@ model Priest {
 }
 
 model Pooja {
-  id     Int    @id @default(autoincrement())
-  name   String
-  amount Float
-  outsideAmount     Float?
+  id            Int    @id @default(autoincrement())
+  name          String
+  amount        Float
+  outsideAmount Float?
 
   date DateTime?
   time DateTime?
@@ -310,12 +368,18 @@ model RolePermission {
   @@map("rolepermission")
 }
 
+enum BookingVenueType {
+  TEMPLE
+  CUSTOM
+}
+
 model Booking {
   id Int @id @default(autoincrement())
 
   userId Int?
   user   User? @relation(fields: [userId], references: [id])
-
+  venueType     BookingVenueType
+  
   poojaId  Int
   priestId Int
   pooja    Pooja  @relation(fields: [poojaId], references: [id])
@@ -444,6 +508,15 @@ model UserRole {
   @@map("userrole")
 }
 
+enum EventRecurrenceType {
+  NONE
+  DAILY
+  WEEKLY
+  MONTHLY
+  YEARLY
+  CUSTOM
+}
+
 model Event {
   id          Int     @id @default(autoincrement())
   name        String
@@ -460,6 +533,10 @@ model Event {
   isInVenue      Boolean @default(false) // NEW
   isOutsideVenue Boolean @default(true) // NEW
 
+  recurrenceType EventRecurrenceType @default(NONE)
+
+  recurrenceDays Json?
+
   date      DateTime
   endDate   DateTime?
   startTime DateTime?
@@ -474,10 +551,10 @@ model Event {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  bookings     EventBooking[]
   sponsorships EventSponsorship[]
 
-  // ✅ Featured image (one-to-one optional) — unified approach
+  occurrences EventOccurrence[]
+
   featuredMediaId Int?
   featuredMedia   MediaAsset? @relation("EventFeaturedMedia", fields: [featuredMediaId], references: [id])
 
@@ -490,30 +567,46 @@ model Event {
 }
 
 model EventBooking {
-  id      Int   @id @default(autoincrement())
-  event   Event @relation(fields: [eventId], references: [id])
-  eventId Int
+  id Int @id @default(autoincrement())
 
-  user   User? @relation(fields: [userId], references: [id])
+  // 🔗 Booking is ALWAYS tied to a specific occurrence
+  eventOccurrenceId Int
+  eventOccurrence   EventOccurrence @relation(fields: [eventOccurrenceId], references: [id], onDelete: Cascade)
+
+  // Optional logged-in user
   userId Int?
+  user   User? @relation(fields: [userId], references: [id])
 
-  pax      Int      @default(1)
-  status   String   @default("confirmed")
+  pax Int @default(1)
+
+  status String @default("PENDING") // PENDING | CONFIRMED | CANCELLED
+
   bookedAt DateTime @default(now())
 
-  // always store these for a guest
+  // 📸 SNAPSHOT (mandatory for history safety)
+  eventNameAtBooking String
+  eventDateAtBooking DateTime
+
+  // Guest details
   userName  String?
   userEmail String?
   userPhone String?
 
+  // 💰 Pricing snapshot
   subtotal       Float?
   discountAmount Float?  @default(0)
   couponCode     String? @db.VarChar(64)
   total          Float?
 
-  // coupon redemptions back-relation
+  // ✅ FIX IS HERE
+  paymentId Int?     @unique
+  payment   Payment? @relation("EventBookingPayment", fields: [paymentId], references: [id])
+
+  // Coupon redemptions
   couponRedemptions CouponRedemption[] @relation("EventBookingCouponRedemptions")
 
+  @@index([eventOccurrenceId])
+  @@index([userId])
   @@map("eventbooking")
 }
 
@@ -583,6 +676,37 @@ model SponsorshipBooking {
   @@map("sponsorshipbooking")
 }
 
+model EventOccurrence {
+  id Int @id @default(autoincrement())
+
+  // 🔗 Parent template
+  eventId Int
+  event   Event @relation(fields: [eventId], references: [id], onDelete: Cascade)
+
+  occurrenceDate DateTime
+
+  startAt DateTime
+  endAt   DateTime
+
+  capacity    Int
+  bookedCount Int @default(0)
+
+  // Optional per-day overrides
+  capacityOverride Int?
+  priceOverride    Float?
+
+  // Admin controls
+  isCancelled Boolean @default(false)
+
+  // Bookings for this date
+  bookings EventBooking[]
+
+  @@unique([eventId, occurrenceDate])
+  @@index([eventId])
+  @@index([occurrenceDate])
+  @@map("eventoccurrence")
+}
+
 model Settings {
   id Int @id @default(1)
 
@@ -600,6 +724,7 @@ model Settings {
   primaryVenue   Venue? @relation(fields: [primaryVenueId], references: [id])
 
   updatedAt DateTime @updatedAt
+
   @@map("settings")
 }
 

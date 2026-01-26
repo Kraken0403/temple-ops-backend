@@ -17,8 +17,8 @@ class UpdateEventSponsorshipDto {
 exports.UpdateEventSponsorshipDto = UpdateEventSponsorshipDto;
 __decorate([
     (0, class_validator_1.IsOptional)(),
-    (0, class_validator_1.IsNumber)(),
-    (0, class_validator_1.Min)(0),
+    (0, class_validator_1.IsInt)(),
+    (0, class_validator_1.Min)(1),
     __metadata("design:type", Number)
 ], UpdateEventSponsorshipDto.prototype, "maxSlots", void 0);
 __decorate([
@@ -27,4 +27,19 @@ __decorate([
     (0, class_validator_1.Min)(0),
     __metadata("design:type", Number)
 ], UpdateEventSponsorshipDto.prototype, "price", void 0);
+__decorate([
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsDateString)(),
+    __metadata("design:type", String)
+], UpdateEventSponsorshipDto.prototype, "startsAt", void 0);
+__decorate([
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsDateString)(),
+    __metadata("design:type", String)
+], UpdateEventSponsorshipDto.prototype, "endsAt", void 0);
+__decorate([
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsBoolean)(),
+    __metadata("design:type", Boolean)
+], UpdateEventSponsorshipDto.prototype, "isActive", void 0);
 //# sourceMappingURL=update-event-sponsorship.dto.js.map

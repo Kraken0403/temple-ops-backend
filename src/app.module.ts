@@ -26,13 +26,15 @@ import { VenuesModule } from './venues/venues.module'
 import { PoojaCategoryModule } from './pooja-category/pooja-category.module'
 import { BhajansModule } from './bhajans/bhajans.module';
 import { CouponsModule } from './coupons/coupons.module';
-
+import { NewsletterModule } from './newsletter/newsletter.module'
+import { PaymentsModule } from './payments/payments.module';
+import { EventOccurrencesModule } from './event-occurrences/event-occurrences.module'
 @Module({
   
   imports: [ ServeStaticModule.forRoot({
     rootPath: path.join(process.cwd(), 'uploads'),
     serveRoot: '/uploads',
-  }), PrismaModule, BhajansModule, CouponsModule, PoojaCategoryModule, NotificationsModule, RoleUsersModule, UsersModule, RolesModule, AuthModule, StaticPagesModule, PoojaModule, PriestModule, BookingModule, EventsModule, DonationsModule, SponsorshipModule, SettingsModule, PermissionsModule, RolePermissionsModule, MediaModule, AlbumsModule, VenuesModule],
+  }), PrismaModule,EventOccurrencesModule , BhajansModule, CouponsModule, PoojaCategoryModule, NotificationsModule, RoleUsersModule, UsersModule, RolesModule, AuthModule, StaticPagesModule, PoojaModule, PriestModule, BookingModule, EventsModule, DonationsModule, SponsorshipModule, SettingsModule, PermissionsModule, RolePermissionsModule, MediaModule, AlbumsModule, VenuesModule, NewsletterModule, PaymentsModule],
 
 })
 export class AppModule {}

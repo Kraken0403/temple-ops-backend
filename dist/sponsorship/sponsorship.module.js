@@ -8,18 +8,18 @@ var __decorate = (this && this.__decorate) || function (decorators, target, key,
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.SponsorshipModule = void 0;
 const common_1 = require("@nestjs/common");
-const sponsorship_service_1 = require("./sponsorship.service");
 const sponsorship_controller_1 = require("./sponsorship.controller");
+const sponsorship_service_1 = require("./sponsorship.service");
 const prisma_service_1 = require("../prisma.service");
-const notifications_module_1 = require("../notifications/notifications.module");
+const notifications_service_1 = require("../notifications/notifications.service");
 let SponsorshipModule = class SponsorshipModule {
 };
 exports.SponsorshipModule = SponsorshipModule;
 exports.SponsorshipModule = SponsorshipModule = __decorate([
     (0, common_1.Module)({
-        imports: [notifications_module_1.NotificationsModule],
         controllers: [sponsorship_controller_1.SponsorshipController],
-        providers: [sponsorship_service_1.SponsorshipService, prisma_service_1.PrismaService],
+        providers: [sponsorship_service_1.SponsorshipService, prisma_service_1.PrismaService, notifications_service_1.NotificationsService],
+        exports: [sponsorship_service_1.SponsorshipService],
     })
 ], SponsorshipModule);
 //# sourceMappingURL=sponsorship.module.js.map

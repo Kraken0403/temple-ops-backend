@@ -10,9 +10,10 @@ var __metadata = (this && this.__metadata) || function (k, v) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.UpdateSponsorshipTypeDto = void 0;
-// src/sponsorship/dto/update-sponsorship-type.dto.ts
+const mapped_types_1 = require("@nestjs/mapped-types");
+const create_sponsorship_type_dto_1 = require("./create-sponsorship-type.dto");
 const class_validator_1 = require("class-validator");
-class UpdateSponsorshipTypeDto {
+class UpdateSponsorshipTypeDto extends (0, mapped_types_1.PartialType)(create_sponsorship_type_dto_1.CreateSponsorshipTypeDto) {
 }
 exports.UpdateSponsorshipTypeDto = UpdateSponsorshipTypeDto;
 __decorate([
@@ -31,4 +32,23 @@ __decorate([
     (0, class_validator_1.Min)(0),
     __metadata("design:type", Number)
 ], UpdateSponsorshipTypeDto.prototype, "price", void 0);
+__decorate([
+    (0, class_validator_1.IsOptional)(),
+    __metadata("design:type", String)
+], UpdateSponsorshipTypeDto.prototype, "startsAt", void 0);
+__decorate([
+    (0, class_validator_1.IsOptional)(),
+    __metadata("design:type", String)
+], UpdateSponsorshipTypeDto.prototype, "endsAt", void 0);
+__decorate([
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsBoolean)(),
+    __metadata("design:type", Boolean)
+], UpdateSponsorshipTypeDto.prototype, "isActive", void 0);
+__decorate([
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsInt)(),
+    (0, class_validator_1.Min)(0),
+    __metadata("design:type", Number)
+], UpdateSponsorshipTypeDto.prototype, "defaultMaxSlots", void 0);
 //# sourceMappingURL=update-sponsorship-type.dto.js.map

@@ -35,4 +35,9 @@ __decorate([
     (0, class_validator_1.IsOptional)(),
     __metadata("design:type", String)
 ], BookEventDto.prototype, "userPhone", void 0);
+__decorate([
+    (0, class_validator_1.IsString)(),
+    (0, class_validator_1.IsOptional)(),
+    __metadata("design:type", String)
+], BookEventDto.prototype, "couponCode", void 0);
 //# sourceMappingURL=book-event.dto.js.map

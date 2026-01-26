@@ -23,6 +23,11 @@ export class UpdateBookingDto {
   @IsOptional() @IsDateString()
   bookingDate?: string
 
+  @IsOptional()
+  @IsIn(['TEMPLE', 'CUSTOM'])
+  venueType?: 'TEMPLE' | 'CUSTOM'
+
+
   /** Full ISO timestamp for slot start (including time) */
   @IsOptional() @IsDateString()
   start?: string

@@ -19,7 +19,7 @@ export class BookEventDto {
   @IsOptional()
   userPhone?: string;
 
-    /** 🎟️ Optional coupon code to apply at booking */
+
   @IsString()
   @IsOptional()
   couponCode?: string;

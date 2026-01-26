@@ -20,25 +20,31 @@ let AuthService = class AuthService {
         this.prisma = prisma;
         this.jwt = jwt;
     }
+    /* ───────────────────────── Validate (LocalStrategy) ───────────────────────── */
     /** Validate credentials for LocalStrategy */
     async validateUser(email, pass) {
         const user = await this.prisma.user.findUnique({
             where: { email },
             include: {
-                // pull in the pivot rows _and_ the related Role record
-                roles: { include: { role: true } }
-            }
+                roles: { include: { role: true } }, // UserRole[] -> Role
+            },
         });
         if (!user)
             return null;
-        if (!(await bcrypt.compare(pass, user.password)))
+        const ok = await bcrypt.compare(pass, user.password);
+        if (!ok)
             return null;
+        const roleNames = (user.roles || [])
+            .map((r) => r.role?.name)
+            .filter(Boolean);
         return {
             id: user.id,
             email: user.email,
-            roles: user.roles.map(r => r.role.name),
+            roles: roleNames,
+            priestId: user.priestId ?? null,
         };
     }
+    /* ─────────────────────────────── Signup ─────────────────────────────── */
     /** Signup a new user (assign "user" role) and return JWT */
     async signup(dto) {
         const hashed = await bcrypt.hash(dto.password, 10);
@@ -49,47 +55,74 @@ let AuthService = class AuthService {
                     email: dto.email,
                     password: hashed,
                     roles: {
-                        // create a pivot row whose nested `role` is connectOrCreate’d
                         create: [
                             {
                                 role: {
                                     connectOrCreate: {
                                         where: { name: 'user' },
-                                        create: { name: 'user' }
-                                    }
-                                }
-                            }
-                        ]
-                    }
+                                        create: { name: 'user' },
+                                    },
+                                },
+                            },
+                        ],
+                    },
                 },
-                include: {
-                    roles: { include: { role: true } }
-                }
+                include: { roles: { include: { role: true } } },
             });
         }
         catch (e) {
-            if (e.code === 'P2002') {
+            if (e?.code === 'P2002') {
                 throw new common_1.BadRequestException('Email already in use');
             }
             throw e;
         }
+        const roleNames = (user.roles || [])
+            .map((r) => r.role?.name)
+            .filter(Boolean);
         const jwtUser = {
             id: user.id,
             email: user.email,
-            roles: user.roles.map(r => r.role.name),
+            roles: roleNames,
+            priestId: user.priestId ?? null, // usually null on signup
         };
-        const token = this.getToken(jwtUser);
+        const token = this.signToken(jwtUser);
         return { access_token: token };
     }
-    /** Login returns JWT for an already-validated user */
+    /* ─────────────────────────────── Login ─────────────────────────────── */
+    /**
+     * Login returns JWT for an already-validated user.
+     * We re-fetch from DB to ensure we always include up-to-date roles & priestId
+     * (in case LocalStrategy’s user payload is stale/minimal).
+     */
     async login(user) {
-        // If you need to re-fetch roles from DB, do so here.
-        return { access_token: this.getToken(user) };
+        const dbUser = await this.prisma.user.findUnique({
+            where: { id: user.id },
+            include: { roles: { include: { role: true } } },
+        });
+        if (!dbUser)
+            throw new common_1.UnauthorizedException();
+        const roleNames = (dbUser.roles || [])
+            .map((r) => r.role?.name)
+            .filter(Boolean);
+        const jwtUser = {
+            id: dbUser.id,
+            email: dbUser.email,
+            roles: roleNames,
+            priestId: dbUser.priestId ?? null,
+        };
+        return { access_token: this.signToken(jwtUser) };
     }
-    /** Helper: signs a JWT from JwtUser */
-    getToken(user) {
-        const payload = { sub: user.id, email: user.email, roles: user.roles };
-        return this.jwt.sign(payload, { expiresIn: process.env.JWT_EXPIRES_IN });
+    /* ───────────────────────────── Helper ───────────────────────────── */
+    /** Helper: sign a JWT from JwtUser (includes priestId for priest-only routes) */
+    signToken(user) {
+        const payload = {
+            sub: user.id,
+            email: user.email,
+            roles: user.roles, // e.g., ['Admin'] | ['Priest'] | ['user']
+            priestId: user.priestId, // number | null
+        };
+        const expiresIn = process.env.JWT_EXPIRES_IN || '7d';
+        return this.jwt.sign(payload, { expiresIn });
     }
 };
 exports.AuthService = AuthService;

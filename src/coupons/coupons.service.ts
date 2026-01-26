@@ -262,20 +262,38 @@ export class CouponsService {
 
   /* ─────────────── Redemption recording (after booking) ─────────────── */
 
-  async recordRedemption(opts: {
-    couponCode: string
-    amountApplied: number
-    userId?: number | null
-    target: { type: 'event'; eventBookingId: number } | { type: 'pooja'; poojaBookingId: number }
-  }) {
+  async recordRedemption(
+    opts: {
+      couponCode: string
+      amountApplied: number
+      userId?: number | null
+      target:
+        | { type: 'event'; eventBookingId: number }
+        | { type: 'pooja'; poojaBookingId: number }
+    },
+    prisma: Prisma.TransactionClient = this.prisma,
+  ) {
     const code = (opts.couponCode || '').trim().toUpperCase()
     if (!code) return
-
-    const coupon = await this.prisma.coupon.findUnique({ where: { code } })
+  
+    // ✅ USE SAME TRANSACTION CLIENT
+    const coupon = await prisma.coupon.findUnique({
+      where: { code },
+    })
     if (!coupon) return
-
+  
+    // ✅ SAFETY GUARD
+    if (
+      opts.target.type === 'event' &&
+      !opts.target.eventBookingId
+    ) {
+      throw new BadRequestException(
+        'eventBookingId is required for coupon redemption',
+      )
+    }
+  
     if (opts.target.type === 'event') {
-      await this.prisma.couponRedemption.create({
+      await prisma.couponRedemption.create({
         data: {
           couponId: coupon.id,
           userId: opts.userId ?? null,
@@ -285,7 +303,7 @@ export class CouponsService {
         },
       })
     } else {
-      await this.prisma.couponRedemption.create({
+      await prisma.couponRedemption.create({
         data: {
           couponId: coupon.id,
           userId: opts.userId ?? null,
@@ -296,4 +314,5 @@ export class CouponsService {
       })
     }
   }
+  
 }

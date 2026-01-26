@@ -63,6 +63,12 @@ __decorate([
 ], CreatePoojaDto.prototype, "venueId", void 0);
 __decorate([
     (0, class_validator_1.IsOptional)(),
+    (0, class_transformer_1.Type)(() => Number),
+    (0, class_validator_1.IsNumber)(),
+    __metadata("design:type", Object)
+], CreatePoojaDto.prototype, "outsideAmount", void 0);
+__decorate([
+    (0, class_validator_1.IsOptional)(),
     (0, class_validator_1.IsDateString)(),
     __metadata("design:type", String)
 ], CreatePoojaDto.prototype, "date", void 0);

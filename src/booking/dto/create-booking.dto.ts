@@ -3,7 +3,7 @@ import {
   IsDateString, 
   IsOptional, 
   IsString,
-  IsNumber, Min, Max
+  IsNumber, Min, Max, IsIn
 } from 'class-validator'
 
 export class CreateBookingDto {
@@ -28,6 +28,11 @@ export class CreateBookingDto {
   /** Full ISO timestamp for slot end (including time) */
   @IsDateString()
   end!: string
+
+  @IsOptional()
+  @IsIn(['TEMPLE', 'CUSTOM'])
+  venueType?: 'TEMPLE' | 'CUSTOM'
+
 
   @IsOptional() @IsString()
   userName?: string

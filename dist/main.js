@@ -12,7 +12,7 @@ async function bootstrap() {
     const uploadsDir = path.resolve(process.cwd(), 'uploads');
     // --- Global CORS for API routes ---
     app.enableCors({
-        origin: ['http://localhost:3001', 'http://127.0.0.1:3001'],
+        origin: ['http://localhost:3001', 'http://127.0.0.1:3001', 'http://127.0.0.1:3003', 'http://localhost:3003'],
         methods: ['GET', 'HEAD', 'PUT', 'PATCH', 'POST', 'DELETE', 'OPTIONS'],
         allowedHeaders: ['Content-Type', 'Accept', 'Authorization', 'Range'],
         exposedHeaders: ['Content-Length', 'Content-Range'],

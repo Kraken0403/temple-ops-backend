@@ -14,21 +14,21 @@ exports.JwtStrategy = void 0;
 const common_1 = require("@nestjs/common");
 const passport_1 = require("@nestjs/passport");
 const passport_jwt_1 = require("passport-jwt");
-let JwtStrategy = class JwtStrategy extends (0, passport_1.PassportStrategy)(passport_jwt_1.Strategy) {
+let JwtStrategy = class JwtStrategy extends (0, passport_1.PassportStrategy)(passport_jwt_1.Strategy, 'jwt') {
     constructor() {
         super({
-            // grab the token from the Authorization header as “Bearer …”
             jwtFromRequest: passport_jwt_1.ExtractJwt.fromAuthHeaderAsBearerToken(),
-            // assert that process.env.JWT_SECRET is a string
             secretOrKey: process.env.JWT_SECRET,
+            ignoreExpiration: false,
         });
     }
-    // this runs after the token is verified
     async validate(payload) {
+        // This becomes req.user
         return {
-            userId: payload.sub,
+            id: payload.sub,
             email: payload.email,
-            roles: payload.roles,
+            roles: payload.roles || [],
+            priestId: payload.priestId ?? null,
         };
     }
 };

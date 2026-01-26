@@ -1,7 +1,16 @@
 import {
-  IsString, IsOptional, IsDateString, IsBoolean, IsInt, IsNumber, IsArray
-} from 'class-validator';
-import { Type } from 'class-transformer';
+  IsString,
+  IsOptional,
+  IsDateString,
+  IsBoolean,
+  IsInt,
+  IsNumber,
+  IsArray,
+  IsEnum,
+} from 'class-validator'
+import { Type } from 'class-transformer'
+import { EventRecurrenceType } from '@prisma/client'
+
 
 export class CreateEventDto {
   @IsString() name!: string;
@@ -19,6 +28,24 @@ export class CreateEventDto {
 
   @IsString() @IsOptional()
   mapLink?: string;
+
+  @IsOptional()
+  @IsEnum(EventRecurrenceType)
+  recurrenceType?: EventRecurrenceType;
+
+  @IsOptional()
+  @IsArray()
+  @IsInt({ each: true })
+  recurrenceDays?: number[]; 
+
+  @IsOptional()
+  @IsDateString()
+  recurrenceStart?: string;
+
+  @IsOptional()
+  @IsDateString()
+  recurrenceEnd?: string;
+
 
   /** Unified flags (same pattern as Pooja) */
   @IsBoolean() @IsOptional() @Type(() => Boolean)

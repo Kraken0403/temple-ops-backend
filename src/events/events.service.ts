@@ -1,3 +1,5 @@
+// src/events/events.service.ts
+
 import {
   Injectable,
   NotFoundException,
@@ -6,252 +8,335 @@ import {
 } from '@nestjs/common'
 import { PrismaService } from '../prisma.service'
 import { NotificationsService } from '../notifications/notifications.service'
+import { CouponsService } from '../coupons/coupons.service'
 import { CreateEventDto } from './dto/create-event.dto'
 import { UpdateEventDto } from './dto/update-event.dto'
 import { BookEventDto } from './dto/book-event.dto'
-import { CouponsService } from '../coupons/coupons.service'
 import { ValidateKind } from '../coupons/dto/validate-coupon.dto'
-
-type EventWindowish = {
-  date: Date
-  endDate: Date | null
-  startTime: Date | null
-  endTime: Date | null
-}
+import { EventRecurrenceType } from '@prisma/client'
+import { DateTime } from 'luxon'
+import { TimezoneUtil } from '../common/timezone.util'
+import { generateOccurrences } from './event-recurrence.util'
 
 @Injectable()
 export class EventsService {
   private readonly logger = new Logger(EventsService.name)
+  private readonly tzUtil: TimezoneUtil
 
   constructor(
     private readonly prisma: PrismaService,
     private readonly notifications: NotificationsService,
-    private readonly coupons: CouponsService, // ✅ inject coupons
-  ) {}
+    private readonly coupons: CouponsService,
+  ) {
+    this.tzUtil = new TimezoneUtil(this.prisma)
+  }
 
-  /* ───────────────────────────── Helpers ───────────────────────────── */
+  /* ───────────────────────── Helpers ───────────────────────── */
 
-  private getEventWindow(ev: EventWindowish) {
-    const toYmdUTC = (d: Date) =>
-      new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), 0, 0, 0, 0))
+  private async ensureEventExists(id: number) {
+    const ev = await this.prisma.event.findUnique({ where: { id } })
+    if (!ev) throw new NotFoundException(`Event ${id} not found`)
+    return ev
+  }
 
-    const dateBase = ev.date ? toYmdUTC(new Date(ev.date)) : null
-    const endBase = ev.endDate ? toYmdUTC(new Date(ev.endDate)) : dateBase
+  private async buildStartEndUTC(params: {
+    occurrenceLocalDay: Date
+    startTimeIso?: string
+    endTimeIso?: string
+  }) {
+    const { occurrenceLocalDay, startTimeIso, endTimeIso } = params
+    const occDayISO = DateTime.fromJSDate(occurrenceLocalDay).toISODate()
 
-    let startAt: Date | null = null
-    if (dateBase) {
-      if (ev.startTime) {
-        const t = new Date(ev.startTime)
-        startAt = new Date(
-          Date.UTC(
-            dateBase.getUTCFullYear(),
-            dateBase.getUTCMonth(),
-            dateBase.getUTCDate(),
-            t.getUTCHours(),
-            t.getUTCMinutes(),
-            t.getUTCSeconds(),
-            t.getUTCMilliseconds(),
-          ),
-        )
-      } else startAt = dateBase
+    const getClock = (fallback: string, iso?: string) => {
+      if (!iso) return fallback
+      const dt = DateTime.fromISO(iso)
+      if (!dt.isValid) throw new BadRequestException('Invalid time format')
+      return dt.toFormat('HH:mm:ss')
     }
 
-    let endAt: Date | null = null
-    if (endBase) {
-      if (ev.endTime) {
-        const t = new Date(ev.endTime)
-        endAt = new Date(
-          Date.UTC(
-            endBase.getUTCFullYear(),
-            endBase.getUTCMonth(),
-            endBase.getUTCDate(),
-            t.getUTCHours(),
-            t.getUTCMinutes(),
-            t.getUTCSeconds(),
-            t.getUTCMilliseconds(),
-          ),
-        )
-      } else endAt = endBase
-    }
+    const startClock = getClock('00:00:00', startTimeIso)
+    const endClock = getClock('23:59:59', endTimeIso)
+
+    const startAt = await this.tzUtil.toUTC(`${occDayISO}T${startClock}`)
+    const endAt = await this.tzUtil.toUTC(`${occDayISO}T${endClock}`)
 
     return { startAt, endAt }
   }
 
-  private isOpenForRegistration(ev: EventWindowish, now = new Date()) {
-    const { startAt } = this.getEventWindow(ev)
-    if (!startAt) return false
-    return now < startAt
+  private async createOccurrencesForEvent(params: {
+    eventId: number
+    recurrenceType: EventRecurrenceType
+    recurrenceDays?: number[]
+    startDateIso: string
+    endDateIso?: string
+    startTimeIso?: string
+    endTimeIso?: string
+    capacity: number | null
+  }){
+    const {
+      eventId,
+      recurrenceType,
+      recurrenceDays,
+      startDateIso,
+      endDateIso,
+      startTimeIso,
+      endTimeIso,
+    } = params
+
+    if (
+      recurrenceType === EventRecurrenceType.CUSTOM &&
+      (!recurrenceDays || !recurrenceDays.length)
+    ) {
+      throw new BadRequestException('recurrenceDays required for CUSTOM recurrence')
+    }
+
+    const startUTC = await this.tzUtil.toUTC(startDateIso)
+    const endUTC = endDateIso ? await this.tzUtil.toUTC(endDateIso) : undefined
+
+    const days = generateOccurrences({
+      recurrenceType,
+      recurrenceDays,
+      startDate: startUTC,
+      endDate: endUTC,
+    })
+
+    if (!days.length) {
+      throw new BadRequestException('No occurrences generated')
+    }
+
+    const occurrences = []
+
+    for (const day of days) {
+      const { startAt, endAt } = await this.buildStartEndUTC({
+        occurrenceLocalDay: day,
+        startTimeIso,
+        endTimeIso,
+      })
+
+      const dateISO = DateTime.fromJSDate(day).toISODate()
+      const occurrenceDate = await this.tzUtil.toUTC(`${dateISO}T00:00:00`)
+
+      occurrences.push({
+        eventId,
+        occurrenceDate,
+        startAt,
+        endAt,
+        capacity: params.capacity ?? 0,
+        bookedCount: 0,
+      })
+      
+    }
+
+    await this.prisma.eventOccurrence.createMany({
+      data: occurrences,
+      skipDuplicates: true,
+    })
   }
 
-  private async ensureExists(id: number) {
-    const ev = await this.prisma.event.findUnique({ where: { id } })
-    if (!ev) throw new NotFoundException(`Event ${id} not found`)
-  }
+  /* ───────────────────────── CRUD ───────────────────────── */
 
-  /* ───────────────────────────── CRUD ───────────────────────────── */
+  async create(dto: CreateEventDto) {
+    const inVenue = !!dto.venueId
+    const recurrenceType = dto.recurrenceType ?? EventRecurrenceType.NONE
 
-  async create(createDto: CreateEventDto) {
-    this.logger.debug(`Creating event with DTO: ${JSON.stringify(createDto, null, 2)}`)
+    const event = await this.prisma.event.create({
+      data: {
+        name: dto.name,
+        description: dto.description ?? null,
 
-    const inVenue = !!createDto.venueId
-    const outsideVenue = !inVenue
+        venue: !inVenue ? dto.venue ?? null : null,
+        mapLink: !inVenue ? dto.mapLink ?? null : null,
+        venueRel: inVenue ? { connect: { id: dto.venueId! } } : undefined,
 
-    const data: any = {
-      name: createDto.name,
-      description: createDto.description ?? null,
+        isInVenue: inVenue,
+        isOutsideVenue: !inVenue,
 
-      venue: outsideVenue ? createDto.venue ?? null : null,
-      mapLink: outsideVenue ? createDto.mapLink ?? null : null,
+        recurrenceType,
+        recurrenceDays: dto.recurrenceDays ?? undefined,
 
-      isInVenue: inVenue,
-      isOutsideVenue: outsideVenue,
+        date: await this.tzUtil.toUTC(dto.date),
+        endDate: dto.endDate ? await this.tzUtil.toUTC(dto.endDate) : null,
+        startTime: dto.startTime ? await this.tzUtil.toUTC(dto.startTime) : null,
+        endTime: dto.endTime ? await this.tzUtil.toUTC(dto.endTime) : null,
 
-      date: createDto.date ? new Date(createDto.date) : null,
-      endDate: createDto.endDate ? new Date(createDto.endDate) : null,
-      startTime: createDto.startTime ? new Date(createDto.startTime) : null,
-      endTime: createDto.endTime ? new Date(createDto.endTime) : null,
+        tags: dto.tags ?? undefined,
+        capacity: dto.capacity ?? null,
+        price: dto.price ?? null,
+        organizer: dto.organizer ?? null,
+        contactInfo: dto.contactInfo ?? null,
+        isPublic: dto.isPublic ?? true,
 
-      tags: createDto.tags ?? undefined,
-      capacity: createDto.capacity ?? null,
-      price: createDto.price ?? null,
-      organizer: createDto.organizer ?? null,
-      contactInfo: createDto.contactInfo ?? null,
-      isPublic: createDto.isPublic ?? true,
-    }
-
-    if (inVenue && createDto.venueId) {
-      data.venueRel = { connect: { id: createDto.venueId } }
-    }
-
-    if (!createDto.clearFeaturedMedia && typeof createDto.featuredMediaId === 'number') {
-      data.featuredMedia = { connect: { id: createDto.featuredMediaId } }
-    }
-
-    return this.prisma.event.create({
-      data,
-      include: {
-        featuredMedia: true,
-        gallery: { include: { media: true }, orderBy: { sortOrder: 'asc' } },
+        ...(dto.featuredMediaId && !dto.clearFeaturedMedia
+          ? { featuredMedia: { connect: { id: dto.featuredMediaId } } }
+          : {}),
       },
     })
+
+    await this.createOccurrencesForEvent({
+      eventId: event.id,
+      recurrenceType,
+      recurrenceDays: dto.recurrenceDays,
+      startDateIso: dto.recurrenceStart ?? dto.date,
+      endDateIso: dto.recurrenceEnd,
+      startTimeIso: dto.startTime,
+      endTimeIso: dto.endTime,
+      capacity: dto.capacity ?? 0,
+    })
+    
+
+    return this.findOne(event.id)
   }
 
   findAll() {
-    return this.prisma.event
-      .findMany({
-        orderBy: { date: 'asc' },
-        include: { featuredMedia: true, venueRel: true },
-      })
-      .then((rows) =>
-        rows.map((ev) => ({
-          ...ev,
-          isOpenForRegistration: this.isOpenForRegistration(ev as unknown as EventWindowish),
-        })),
-      )
+    return this.prisma.event.findMany({
+      orderBy: { date: 'asc' },
+      include: {
+        featuredMedia: true,
+        venueRel: true,
+        occurrences: {
+          where: { isCancelled: false },
+          orderBy: { occurrenceDate: 'asc' },
+        },
+      },
+    })
   }
 
   async findOne(id: number) {
-    const ev = await this.prisma.event.findUnique({
+    await this.ensureEventExists(id)
+
+    return this.prisma.event.findUnique({
       where: { id },
       include: {
         featuredMedia: true,
-        gallery: { include: { media: true }, orderBy: { sortOrder: 'asc' } },
         venueRel: true,
+        gallery: {
+          include: { media: true },
+          orderBy: { sortOrder: 'asc' },
+        },
+        occurrences: {
+          where: { isCancelled: false },
+          orderBy: { occurrenceDate: 'asc' },
+        },
       },
     })
-    if (!ev) throw new NotFoundException(`Event ${id} not found`)
-    return {
-      ...ev,
-      isOpenForRegistration: this.isOpenForRegistration(ev as unknown as EventWindowish),
-    }
   }
 
-  async update(id: number, updateDto: UpdateEventDto) {
-    this.logger.debug(
-      `Updating event ${id} with DTO: ${JSON.stringify(updateDto, null, 2)}`
-    );
-
-    await this.ensureExists(id);
-
-    const inVenue = !!updateDto.venueId;
-    const outsideVenue = !inVenue;
-
-    const data: any = {
-      ...(updateDto.name !== undefined && { name: updateDto.name }),
-      ...(updateDto.description !== undefined && { description: updateDto.description }),
-
-      venue: outsideVenue ? updateDto.venue ?? null : null,
-      mapLink: outsideVenue ? updateDto.mapLink ?? null : null,
-
-      isInVenue: inVenue,
-      isOutsideVenue: outsideVenue,
-
-      ...(updateDto.date !== undefined && {
-        date: updateDto.date ? new Date(updateDto.date) : null,
-      }),
-      ...(updateDto.endDate !== undefined && {
-        endDate: updateDto.endDate ? new Date(updateDto.endDate) : null,
-      }),
-      ...(updateDto.startTime !== undefined && {
-        startTime: updateDto.startTime ? new Date(updateDto.startTime) : null,
-      }),
-      ...(updateDto.endTime !== undefined && {
-        endTime: updateDto.endTime ? new Date(updateDto.endTime) : null,
-      }),
-
-      ...(updateDto.tags !== undefined && { tags: updateDto.tags }),
-      ...(updateDto.capacity !== undefined && { capacity: updateDto.capacity }),
-      ...(updateDto.price !== undefined && { price: updateDto.price }),
-      ...(updateDto.organizer !== undefined && { organizer: updateDto.organizer }),
-      ...(updateDto.contactInfo !== undefined && { contactInfo: updateDto.contactInfo }),
-      ...(updateDto.isPublic !== undefined && { isPublic: updateDto.isPublic }),
-    };
-
-    // ✅ Handle venue relation safely
-    if (updateDto.venueId !== undefined) {
-      if (updateDto.venueId) {
-        data.venueRel = { connect: { id: updateDto.venueId } };
-      } else {
-        data.venueRel = { disconnect: true };
-        data.venueId = null; // Prevent FK constraint error
-      }
+  async update(id: number, dto: UpdateEventDto) {
+    await this.ensureEventExists(id)
+  
+    // 1️⃣ Fetch existing event FIRST
+    const existing = await this.prisma.event.findUnique({
+      where: { id },
+    })
+  
+    if (!existing) {
+      throw new NotFoundException('Event not found')
     }
-
-    // ✅ Handle featured image safely
-    if (updateDto.clearFeaturedMedia) {
-      data.featuredMedia = { disconnect: true };
-    } else if (typeof updateDto.featuredMediaId === "number") {
-      data.featuredMedia = { connect: { id: updateDto.featuredMediaId } };
+  
+    const data: any = {}
+  
+    // ───────── Basic fields ─────────
+    if (dto.name !== undefined) data.name = dto.name
+    if (dto.description !== undefined) data.description = dto.description
+    if (dto.tags !== undefined) data.tags = dto.tags
+    if (dto.capacity !== undefined) data.capacity = dto.capacity
+    if (dto.price !== undefined) data.price = dto.price
+    if (dto.organizer !== undefined) data.organizer = dto.organizer
+    if (dto.contactInfo !== undefined) data.contactInfo = dto.contactInfo
+    if (dto.isPublic !== undefined) data.isPublic = dto.isPublic
+  
+    // ───────── Dates / times ─────────
+    if (dto.date !== undefined)
+      data.date = await this.tzUtil.toUTC(dto.date)
+  
+    if (dto.endDate !== undefined)
+      data.endDate = dto.endDate
+        ? await this.tzUtil.toUTC(dto.endDate)
+        : null
+  
+    if (dto.startTime !== undefined)
+      data.startTime = dto.startTime
+        ? await this.tzUtil.toUTC(dto.startTime)
+        : null
+  
+    if (dto.endTime !== undefined)
+      data.endTime = dto.endTime
+        ? await this.tzUtil.toUTC(dto.endTime)
+        : null
+  
+    // ───────── Venue ─────────
+    if (dto.venueId !== undefined) {
+      data.venueRel = dto.venueId
+        ? { connect: { id: dto.venueId } }
+        : { disconnect: true }
+  
+      data.isInVenue = !!dto.venueId
+      data.isOutsideVenue = !dto.venueId
     }
-
-    try {
-      const updated = await this.prisma.event.update({
-        where: { id },
-        data,
-        include: {
-          featuredMedia: true,
-          gallery: { include: { media: true }, orderBy: { sortOrder: "asc" } },
-        },
-      });
-
-      this.logger.debug(`✅ Event ${id} updated successfully`);
-      return updated;
-    } catch (err: unknown) {
-      if (err instanceof Error) {
-        this.logger.error(
-          `❌ Prisma update failed for event ${id}: ${err.message}`,
-          err.stack
-        );
-        throw new BadRequestException(err.message);
-      } else {
-        this.logger.error(`❌ Unknown error while updating event ${id}: ${String(err)}`);
-        throw new BadRequestException("Failed to update event. Check server logs.");
-      }
+  
+    // ───────── Recurrence (CRITICAL) ─────────
+    if (dto.recurrenceType !== undefined) {
+      data.recurrenceType = dto.recurrenceType
     }
+  
+    if (dto.recurrenceDays !== undefined) {
+      data.recurrenceDays =
+        dto.recurrenceType === EventRecurrenceType.CUSTOM
+          ? dto.recurrenceDays ?? []
+          : []
+    }
+  
+    // ───────── Media ─────────
+    if (dto.clearFeaturedMedia) {
+      data.featuredMedia = { disconnect: true }
+    } else if (typeof dto.featuredMediaId === 'number') {
+      data.featuredMedia = { connect: { id: dto.featuredMediaId } }
+    }
+  
+    // 2️⃣ Update event row
+    await this.prisma.event.update({
+      where: { id },
+      data,
+    })
+  
+    // 3️⃣ Decide if recurrence needs rebuild
+    const recurrenceChanged =
+      dto.recurrenceType !== undefined ||
+      dto.recurrenceDays !== undefined ||
+      dto.date !== undefined ||
+      dto.endDate !== undefined ||
+      dto.startTime !== undefined ||
+      dto.endTime !== undefined
+  
+    // 4️⃣ Rebuild occurrences IF needed
+    if (recurrenceChanged) {
+      await this.prisma.eventOccurrence.deleteMany({
+        where: { eventId: id },
+      })
+  
+      await this.createOccurrencesForEvent({
+        eventId: id,
+        recurrenceType: dto.recurrenceType ?? existing.recurrenceType,
+        recurrenceDays: dto.recurrenceDays ?? (existing.recurrenceDays as number[] | undefined),
+        startDateIso: dto.recurrenceStart ?? dto.date ?? existing.date.toISOString(),
+        endDateIso: dto.recurrenceEnd ?? dto.endDate ?? existing.endDate?.toISOString(),
+        startTimeIso: dto.startTime ?? existing.startTime?.toISOString(),
+        endTimeIso: dto.endTime ?? existing.endTime?.toISOString(),
+        capacity: dto.capacity ?? existing.capacity ?? 0,
+      })
+      
+      
+    }
+  
+    // 5️⃣ ALWAYS return full hydrated event
+    return this.findOne(id)
   }
+  
+
+  
 
   async remove(id: number) {
-    await this.ensureExists(id)
+    await this.ensureEventExists(id)
 
     await this.prisma.eventSponsorship.updateMany({
       where: { eventId: id },
@@ -263,132 +348,245 @@ export class EventsService {
     return this.prisma.event.delete({ where: { id } })
   }
 
-  /* ─────────────────────────── Bookings ─────────────────────────── */
 
-  async bookEventAsGuest(eventId: number, dto: BookEventDto) {
-    const ev = await this.prisma.event.findUnique({ where: { id: eventId } })
-    if (!ev) throw new NotFoundException(`Event ${eventId} not found`)
 
-    if (!this.isOpenForRegistration(ev as unknown as EventWindowish)) {
-      throw new BadRequestException('Registrations are closed for this event')
-    }
 
-    if (ev.capacity != null) {
-      const aggregate = await this.prisma.eventBooking.aggregate({
-        where: { eventId, status: 'confirmed' },
-        _sum: { pax: true },
+  /* ───────────────────── Bookings ───────────────────── */
+
+  // async bookOccurrenceAsGuest(occurrenceId: number, dto: BookEventDto) {
+  //   // 🔒 1️⃣ TRANSACTION — DB ONLY
+  //   const booking = await this.prisma.$transaction(async (tx) => {
+  //     // Lock occurrence
+  //     const occ = await tx.eventOccurrence.findUnique({
+  //       where: { id: occurrenceId },
+  //       include: { event: true },
+  //     })
+  
+  //     if (!occ || occ.isCancelled) {
+  //       throw new BadRequestException('Event occurrence not available')
+  //     }
+  
+  //     const now = new Date()
+  //     if (now >= occ.startAt) {
+  //       throw new BadRequestException('Booking is closed for this event')
+  //     }
+  
+  //     const pax = Math.max(1, dto.pax)
+  
+  //     // Capacity check
+  //     if (occ.capacity !== null) {
+  //       const remaining = occ.capacity - occ.bookedCount
+  //       if (remaining <= 0) {
+  //         throw new BadRequestException('Event is fully booked')
+  //       }
+  //       if (pax > remaining) {
+  //         throw new BadRequestException(
+  //           `Only ${remaining} seat(s) remaining`,
+  //         )
+  //       }
+  //     }
+  
+  //     // Pricing
+  //     const unit = occ.priceOverride ?? occ.event.price ?? 0
+  //     const subtotal = pax * unit
+  
+  //     let discount = 0
+  //     let total = subtotal
+  //     const code = dto.couponCode?.trim()
+  
+  //     if (code) {
+  //       const quote = await this.coupons.validateAndQuote(code, {
+  //         kind: ValidateKind.EVENT,
+  //         eventId: occ.eventId,
+  //         pax,
+  //       })
+  
+  //       if (!quote.valid) {
+  //         throw new BadRequestException(quote.reason)
+  //       }
+  
+  //       discount = quote.discount ?? 0
+  //       total = quote.total ?? subtotal - discount
+  //     }
+  
+  //     // Create booking
+  //     const booking = await tx.eventBooking.create({
+  //       data: {
+  //         eventOccurrenceId: occ.id,
+  //         eventNameAtBooking: occ.event.name,
+  //         eventDateAtBooking: occ.occurrenceDate,
+  //         pax,
+  //         subtotal,
+  //         discountAmount: discount,
+  //         total,
+  //         userName: dto.userName ?? null,
+  //         userEmail: dto.userEmail ?? null,
+  //         userPhone: dto.userPhone ?? null,
+  //         couponCode: code ?? null,
+  //       },
+  //     })
+  
+  //     // Increment seats
+  //     await tx.eventOccurrence.update({
+  //       where: { id: occ.id },
+  //       data: {
+  //         bookedCount: { increment: pax },
+  //       },
+  //     })
+  
+  //     // Record coupon redemption
+  //     if (code && discount > 0) {
+  //       await this.coupons.recordRedemption(
+  //         {
+  //           couponCode: code,
+  //           amountApplied: discount,
+  //           userId: null,
+  //           target: {
+  //             type: 'event',
+  //             eventBookingId: booking.id,
+  //           },
+  //         },
+  //         tx,
+  //       )
+  //     }
+  
+  //     return booking
+  //   })
+  
+  //   // 📧 2️⃣ SIDE EFFECTS — OUTSIDE TRANSACTION
+  //   await this.notifications.sendEventBookingCreated(booking.id)
+  
+  //   return booking
+  // }
+  async bookOccurrenceAsGuest(occurrenceId: number, dto: BookEventDto) {
+    const booking = await this.prisma.$transaction(async (tx) => {
+      const occ = await tx.eventOccurrence.findUnique({
+        where: { id: occurrenceId },
+        include: { event: true },
       })
-      const already = aggregate._sum.pax ?? 0
-      if (already + dto.pax > ev.capacity) {
-        throw new BadRequestException('Not enough seats available')
+  
+      if (!occ || occ.isCancelled) {
+        throw new BadRequestException('Event occurrence not available')
       }
-    }
+  
+      const now = new Date()
+      if (now >= occ.startAt) {
+        throw new BadRequestException('Booking is closed for this event')
+      }
+  
+      const pax = Math.max(1, dto.pax)
+  
+      // Capacity check (SOFT CHECK)
+      if (occ.capacity !== null) {
+        const remaining = occ.capacity - occ.bookedCount
+        if (remaining <= 0) {
+          throw new BadRequestException('Event is fully booked')
+        }
+        if (pax > remaining) {
+          throw new BadRequestException(`Only ${remaining} seat(s) remaining`)
+        }
+      }
+  
+      const unit = occ.priceOverride ?? occ.event.price ?? 0
+      const subtotal = pax * unit
+  
+      let discount = 0
+      let total = subtotal
+      const code = dto.couponCode?.trim()
+  
+      if (code) {
+        const quote = await this.coupons.validateAndQuote(code, {
+          kind: ValidateKind.EVENT,
+          eventId: occ.eventId,
+          pax,
+        })
+  
+        if (!quote.valid) {
+          throw new BadRequestException(quote.reason)
+        }
+  
+        discount = quote.discount ?? 0
+        total = quote.total ?? subtotal - discount
+      }
+  
+      // ✅ Create booking as PENDING
+      const booking = await tx.eventBooking.create({
+        data: {
+          eventOccurrenceId: occ.id,
+          eventNameAtBooking: occ.event.name,
+          eventDateAtBooking: occ.occurrenceDate,
+          pax,
+          subtotal,
+          discountAmount: discount,
+          total,
+          status: 'PENDING',
+          userName: dto.userName ?? null,
+          userEmail: dto.userEmail ?? null,
+          userPhone: dto.userPhone ?? null,
+          couponCode: code ?? null,
 
-    // ✅ totals + coupon
-    const pax = Math.max(1, Number(dto.pax || 1))
-    const unit = ev.price ?? 0
-    const subtotal = unit * pax
-
-    let discount = 0
-    let total = subtotal
-    const code = (dto.couponCode || '').trim()
-
-    if (code) {
-      const quote = await this.coupons.validateAndQuote(code, {
-        kind: ValidateKind.EVENT,
-        eventId,
-        pax,
+        },
       })
-      if (!quote.valid) throw new BadRequestException(quote.reason || 'Invalid coupon')
-
-      discount = quote.discount ?? 0
-      total    = quote.total ?? Math.max(0, subtotal - discount)
-    }
-
-    const booking = await this.prisma.eventBooking.create({
-      data: {
-        event: { connect: { id: eventId } },
-        pax,
-        userName: dto.userName ?? null,
-        userEmail: dto.userEmail ?? null,
-        userPhone: dto.userPhone ?? null,
-        status: 'confirmed',
-
-        // ✅ write coupon/totals
-        couponCode: code || null,
-        discountAmount: discount,
-        subtotal,
-        total,
-      },
+  
+      return booking
     })
-
-    if (code) {
-      await this.coupons.recordRedemption({
-        couponCode: code,
-        amountApplied: discount,
-        userId: null, // pass a real userId if you attach users to event bookings
-        target: { type: 'event', eventBookingId: booking.id },
-      })
-    }
-
-    // ✅ trigger notification
-    try {
-      await this.notifications.sendEventBookingCreated(booking.id)
-    } catch (err) {
-      if (err instanceof Error) {
-        this.logger.error(`Failed to send booking notification: ${err.message}`, err.stack)
-      } else {
-        this.logger.error(`Failed to send booking notification: ${String(err)}`)
-      }
-    }
-
+  
+    // ❌ No seat increment here
+    // ❌ No coupon redemption here
+    // ❌ No confirmation notification here
+  
     return booking
   }
-
+  
+  
   async findBookings(eventId: number) {
-    await this.ensureExists(eventId)
     return this.prisma.eventBooking.findMany({
-      where: { eventId },
+      where: {
+        eventOccurrence: {
+          eventId,
+        },
+      },
+      include: {
+        payment: true, // ✅ THIS IS WHERE IT BELONGS
+      },
       orderBy: { bookedAt: 'desc' },
     })
   }
+  
 
-  /* ───────────────────── Media / Gallery helpers ─────────────────── */
+  /* ───────────────────── Media helpers ───────────────────── */
 
   async setFeaturedMedia(eventId: number, mediaId: number | null) {
-    await this.ensureExists(eventId)
+    await this.ensureEventExists(eventId)
+
     if (mediaId != null) {
       const exists = await this.prisma.mediaAsset.count({ where: { id: mediaId } })
       if (!exists) throw new BadRequestException('mediaId not found')
     }
 
-    return this.prisma.event
-      .update({
-        where: { id: eventId },
-        data: { featuredMediaId: mediaId },
-        include: {
-          featuredMedia: true,
-          gallery: { include: { media: true }, orderBy: { sortOrder: 'asc' } },
-        },
-      })
-      .then((ev) => ({
-        ...ev,
-        isOpenForRegistration: this.isOpenForRegistration(ev as unknown as EventWindowish),
-      }))
+    return this.prisma.event.update({
+      where: { id: eventId },
+      data: { featuredMediaId: mediaId },
+      include: {
+        featuredMedia: true,
+        gallery: { include: { media: true }, orderBy: { sortOrder: 'asc' } },
+      },
+    })
   }
 
   async addToGallery(eventId: number, mediaIds: number[]) {
-    await this.ensureExists(eventId)
+    await this.ensureEventExists(eventId)
     if (!mediaIds?.length) return { ok: true }
 
     const ids = [...new Set(mediaIds)]
     const count = await this.prisma.mediaAsset.count({ where: { id: { in: ids } } })
-    if (count !== ids.length) throw new BadRequestException('Some mediaIds do not exist')
+    if (count !== ids.length) throw new BadRequestException('Invalid mediaIds')
 
     const max = await this.prisma.eventMedia.aggregate({
       where: { eventId },
       _max: { sortOrder: true },
     })
+
     let start = (max._max.sortOrder ?? -1) + 1
 
     await this.prisma.eventMedia.createMany({
@@ -396,33 +594,27 @@ export class EventsService {
       skipDuplicates: true,
     })
 
-    const ev = await this.prisma.event.findUnique({
-      where: { id: eventId },
-      include: { gallery: { include: { media: true }, orderBy: { sortOrder: 'asc' } } },
-    })
-    return {
-      ...ev,
-      isOpenForRegistration: ev
-        ? this.isOpenForRegistration(ev as unknown as EventWindowish)
-        : false,
-    }
+    return this.findOne(eventId)
   }
 
   async reorderGallery(eventId: number, orders: { mediaId: number; sortOrder: number }[]) {
-    await this.ensureExists(eventId)
+    await this.ensureEventExists(eventId)
+
     await this.prisma.eventMedia.deleteMany({ where: { eventId } })
 
-    const data = (orders ?? [])
-      .slice()
+    const data = orders
       .sort((a, b) => a.sortOrder - b.sortOrder)
       .map((o, i) => ({ eventId, mediaId: o.mediaId, sortOrder: i }))
 
-    if (data.length) await this.prisma.eventMedia.createMany({ data })
+    if (data.length) {
+      await this.prisma.eventMedia.createMany({ data })
+    }
+
     return { ok: true }
   }
 
   async removeFromGallery(eventId: number, mediaId: number) {
-    await this.ensureExists(eventId)
+    await this.ensureEventExists(eventId)
     await this.prisma.eventMedia.deleteMany({ where: { eventId, mediaId } })
     return { ok: true }
   }

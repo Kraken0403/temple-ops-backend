@@ -243,140 +243,259 @@ export class NotificationsService {
 async sendEventBookingCreated(eventBookingId: number) {
   const eb = await this.prisma.eventBooking.findUnique({
     where: { id: eventBookingId },
-    include: { event: { include: { venueRel: true } }, user: true },
+    include: {
+      eventOccurrence: {
+        include: {
+          event: {
+            include: { venueRel: true },
+          },
+        },
+      },
+    },
   })
   if (!eb) return
 
   const settings = await this.getSettings()
-  const event = eb.event
 
-  const eventDateText = await this.tzUtil.format(event?.date, 'EEE, dd LLL yyyy')
-  const startText     = event?.startTime ? await this.tzUtil.format(event.startTime, 'hh:mm a') : ''
-  const endText       = event?.endTime ? await this.tzUtil.format(event.endTime, 'hh:mm a') : ''
-  const eventTimeText = startText && endText ? `${startText} – ${endText}` : startText || ''
+  const occurrence = eb.eventOccurrence
+  const event = occurrence?.event
+  if (!occurrence || !event) return
 
-  const venueText = event?.venueRel?.title || event?.venueRel?.address || event?.venue || 'TBA'
+  // 📅 Event date (DAY) — from occurrenceDate
+  const eventDateText = await this.tzUtil.format(
+    occurrence.occurrenceDate,
+    'EEE, dd LLL yyyy',
+  )
 
+  // ⏰ Event time — from startAt / endAt
+  const startText = occurrence.startAt
+    ? await this.tzUtil.format(occurrence.startAt, 'hh:mm a')
+    : ''
+
+  const endText = occurrence.endAt
+    ? await this.tzUtil.format(occurrence.endAt, 'hh:mm a')
+    : ''
+
+  const eventTimeText =
+    startText && endText ? `${startText} – ${endText}` : startText
+
+  // 📍 Venue
+  const venueText =
+    event.venueRel?.title ||
+    event.venueRel?.address ||
+    event.venue ||
+    'TBA'
+
+  // 📩 Email context
   const ctx = {
     eventBookingId: eb.id,
-    eventName: event?.name || 'Event',
+    eventName: event.name,
     eventDateText,
     eventTimeText,
     venue: venueText,
 
-    userName: eb.userName || eb.user?.email || 'Attendee',
-    userEmail: eb.userEmail || eb.user?.email || '',
+    userName: eb.userName || 'Attendee',
+    userEmail: eb.userEmail || '',
     userPhone: eb.userPhone || '',
 
-    ticketsText: eb.pax ? `${eb.pax} ${eb.pax > 1 ? 'tickets' : 'ticket'}` : '',
-    priceText: event?.price != null ? `${event.price} ${settings.currency}` : '',
+    ticketsText: `${eb.pax} ${eb.pax > 1 ? 'tickets' : 'ticket'}`,
+    priceText:
+      eb.total != null ? `${eb.total} ${settings.currency}` : '',
 
-    eventUrl: `${APP_URL}/events/${event?.id || ''}`,
-    adminUrl: `${APP_URL}/admin/events/${event?.id || ''}`,
+    eventUrl: `${APP_URL}/events/${event.id}`,
+    adminUrl: `${APP_URL}/admin/events/${event.id}`,
 
     appName: APP_NAME,
     appUrl: APP_URL,
     year: new Date().getFullYear(),
   }
 
-  const userTo  = ctx.userEmail?.trim() || undefined
+  const userTo = ctx.userEmail.trim() || undefined
   const adminTo = await this.getAdminRecipients()
-  const organizerTo = (process.env.EVENTS_NOTIFY_EMAILS || '')
-    .split(',').map(s => s.trim()).filter(Boolean)
 
-  await this.sendIf({ to: userTo,      subject: 'Your event booking is confirmed', template: 'event/booking-event-user', context: ctx })
-  await this.sendIf({ to: adminTo,     subject: `New event booking #${eb.id} - ${ctx.eventName}`, template: 'event/booking-event-admin', context: ctx })
-  await this.sendIf({ to: organizerTo, subject: `New attendee for ${ctx.eventName}`, template: 'event/booking-event-organizer', context: ctx })
+  await this.sendIf({
+    to: userTo,
+    subject: 'Your event booking is confirmed',
+    template: 'event/booking-event-user',
+    context: ctx,
+  })
+
+  await this.sendIf({
+    to: adminTo,
+    subject: `New event booking #${eb.id} – ${event.name}`,
+    template: 'event/booking-event-admin',
+    context: ctx,
+  })
 }
+
 
 async sendEventBookingUpdated(eventBookingId: number) {
   const eb = await this.prisma.eventBooking.findUnique({
     where: { id: eventBookingId },
-    include: { event: { include: { venueRel: true } }, user: true },
+    include: {
+      eventOccurrence: {
+        include: {
+          event: {
+            include: { venueRel: true },
+          },
+        },
+      },
+    },
   })
   if (!eb) return
 
   const settings = await this.getSettings()
-  const event = eb.event
 
-  const eventDateText = await this.tzUtil.format(event?.date, 'EEE, dd LLL yyyy')
-  const startText     = event?.startTime ? await this.tzUtil.format(event.startTime, 'hh:mm a') : ''
-  const endText       = event?.endTime ? await this.tzUtil.format(event.endTime, 'hh:mm a') : ''
-  const eventTimeText = startText && endText ? `${startText} – ${endText}` : startText || ''
+  const occurrence = eb.eventOccurrence
+  const event = occurrence?.event
+  if (!occurrence || !event) return
 
-  const venueText = event?.venueRel?.title || event?.venueRel?.address || event?.venue || 'TBA'
+  const eventDateText = await this.tzUtil.format(
+    occurrence.occurrenceDate,
+    'EEE, dd LLL yyyy',
+  )
+
+  const startText = occurrence.startAt
+    ? await this.tzUtil.format(occurrence.startAt, 'hh:mm a')
+    : ''
+
+  const endText = occurrence.endAt
+    ? await this.tzUtil.format(occurrence.endAt, 'hh:mm a')
+    : ''
+
+  const eventTimeText =
+    startText && endText ? `${startText} – ${endText}` : startText
+
+  const venueText =
+    event.venueRel?.title ||
+    event.venueRel?.address ||
+    event.venue ||
+    'TBA'
 
   const ctx = {
     eventBookingId: eb.id,
-    eventName: event?.name || 'Event',
+    eventName: eb.eventNameAtBooking || event.name || 'Event',
     eventDateText,
     eventTimeText,
     venue: venueText,
 
-    userName: eb.userName || eb.user?.email || 'Attendee',
-    userEmail: eb.userEmail || eb.user?.email || '',
+    userName: eb.userName || 'Attendee',
+    userEmail: eb.userEmail || '',
     userPhone: eb.userPhone || '',
 
-    ticketsText: eb.pax ? `${eb.pax} ${eb.pax > 1 ? 'tickets' : 'ticket'}` : '',
-    priceText: event?.price != null ? `${event.price} ${settings.currency}` : '',
+    ticketsText: `${eb.pax} ${eb.pax > 1 ? 'tickets' : 'ticket'}`,
+    priceText: eb.total != null ? `${eb.total} ${settings.currency}` : '',
 
-    eventUrl: `${APP_URL}/events/${event?.id || ''}`,
-    adminUrl: `${APP_URL}/admin/events/${event?.id || ''}`,
+    eventUrl: `${APP_URL}/events/${event.id}`,
+    adminUrl: `${APP_URL}/admin/events/${event.id}`,
 
     appName: APP_NAME,
     appUrl: APP_URL,
     year: new Date().getFullYear(),
   }
 
-  const userTo  = ctx.userEmail?.trim() || undefined
+  const userTo = (ctx.userEmail || '').trim() || undefined
   const adminTo = await this.getAdminRecipients()
 
-  await this.sendIf({ to: userTo,  subject: 'Your event booking was updated', template: 'event/booking-event-updated-user', context: ctx })
-  await this.sendIf({ to: adminTo, subject: `Event booking #${eb.id} updated - ${ctx.eventName}`, template: 'event/booking-event-updated-admin', context: ctx })
+  await this.sendIf({
+    to: userTo,
+    subject: 'Your event booking was updated',
+    template: 'event/booking-event-updated-user',
+    context: ctx,
+  })
+
+  await this.sendIf({
+    to: adminTo,
+    subject: `Event booking #${eb.id} updated – ${ctx.eventName}`,
+    template: 'event/booking-event-updated-admin',
+    context: ctx,
+  })
 }
+
 
 async sendEventBookingCanceled(eventBookingId: number) {
   const eb = await this.prisma.eventBooking.findUnique({
     where: { id: eventBookingId },
-    include: { event: { include: { venueRel: true } }, user: true },
+    include: {
+      eventOccurrence: {
+        include: {
+          event: {
+            include: { venueRel: true },
+          },
+        },
+      },
+    },
   })
   if (!eb) return
 
   const settings = await this.getSettings()
-  const event = eb.event
 
-  const eventDateText = await this.tzUtil.format(event?.date, 'EEE, dd LLL yyyy')
-  const startText     = event?.startTime ? await this.tzUtil.format(event.startTime, 'hh:mm a') : ''
-  const endText       = event?.endTime ? await this.tzUtil.format(event.endTime, 'hh:mm a') : ''
-  const eventTimeText = startText && endText ? `${startText} – ${endText}` : startText || ''
+  const occurrence = eb.eventOccurrence
+  const event = occurrence?.event
+  if (!occurrence || !event) return
 
-  const venueText = event?.venueRel?.title || event?.venueRel?.address || event?.venue || 'TBA'
+  const eventDateText = await this.tzUtil.format(
+    occurrence.occurrenceDate,
+    'EEE, dd LLL yyyy',
+  )
+
+  const startText = occurrence.startAt
+    ? await this.tzUtil.format(occurrence.startAt, 'hh:mm a')
+    : ''
+
+  const endText = occurrence.endAt
+    ? await this.tzUtil.format(occurrence.endAt, 'hh:mm a')
+    : ''
+
+  const eventTimeText =
+    startText && endText ? `${startText} – ${endText}` : startText
+
+  const venueText =
+    event.venueRel?.title ||
+    event.venueRel?.address ||
+    event.venue ||
+    'TBA'
 
   const ctx = {
     eventBookingId: eb.id,
-    eventName: event?.name || 'Event',
+    eventName: eb.eventNameAtBooking || event.name || 'Event',
     eventDateText,
     eventTimeText,
     venue: venueText,
 
-    userName: eb.userName || eb.user?.email || 'Attendee',
-    userEmail: eb.userEmail || eb.user?.email || '',
+    userName: eb.userName || 'Attendee',
+    userEmail: eb.userEmail || '',
     userPhone: eb.userPhone || '',
 
-    eventUrl: `${APP_URL}/events/${event?.id || ''}`,
-    adminUrl: `${APP_URL}/admin/events/${event?.id || ''}`,
+    ticketsText: `${eb.pax} ${eb.pax > 1 ? 'tickets' : 'ticket'}`,
+    priceText: eb.total != null ? `${eb.total} ${settings.currency}` : '',
+
+    eventUrl: `${APP_URL}/events/${event.id}`,
+    adminUrl: `${APP_URL}/admin/events/${event.id}`,
 
     appName: APP_NAME,
     appUrl: APP_URL,
     year: new Date().getFullYear(),
   }
 
-  const userTo  = ctx.userEmail?.trim() || undefined
+  const userTo = (ctx.userEmail || '').trim() || undefined
   const adminTo = await this.getAdminRecipients()
 
-  await this.sendIf({ to: userTo,  subject: 'Your event booking was canceled', template: 'event/booking-event-canceled-user', context: ctx })
-  await this.sendIf({ to: adminTo, subject: `Event booking #${eb.id} canceled - ${ctx.eventName}`, template: 'event/booking-event-canceled-admin', context: ctx })
+  await this.sendIf({
+    to: userTo,
+    subject: 'Your event booking was canceled',
+    template: 'event/booking-event-canceled-user',
+    context: ctx,
+  })
+
+  await this.sendIf({
+    to: adminTo,
+    subject: `Event booking #${eb.id} canceled – ${ctx.eventName}`,
+    template: 'event/booking-event-canceled-admin',
+    context: ctx,
+  })
 }
+
 
 // ─────────────────────────────────────────────
 // SPONSORSHIPS

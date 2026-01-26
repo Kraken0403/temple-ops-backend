@@ -33,6 +33,10 @@ const albums_module_1 = require("./albums/albums.module");
 const venues_module_1 = require("./venues/venues.module");
 const pooja_category_module_1 = require("./pooja-category/pooja-category.module");
 const bhajans_module_1 = require("./bhajans/bhajans.module");
+const coupons_module_1 = require("./coupons/coupons.module");
+const newsletter_module_1 = require("./newsletter/newsletter.module");
+const payments_module_1 = require("./payments/payments.module");
+const event_occurrences_module_1 = require("./event-occurrences/event-occurrences.module");
 let AppModule = class AppModule {
 };
 exports.AppModule = AppModule;
@@ -41,7 +45,7 @@ exports.AppModule = AppModule = __decorate([
         imports: [serve_static_1.ServeStaticModule.forRoot({
                 rootPath: path.join(process.cwd(), 'uploads'),
                 serveRoot: '/uploads',
-            }), prisma_module_1.PrismaModule, bhajans_module_1.BhajansModule, pooja_category_module_1.PoojaCategoryModule, notifications_module_1.NotificationsModule, role_users_module_1.RoleUsersModule, users_module_1.UsersModule, roles_module_1.RolesModule, auth_module_1.AuthModule, static_pages_module_1.StaticPagesModule, pooja_module_1.PoojaModule, priest_module_1.PriestModule, booking_module_1.BookingModule, events_module_1.EventsModule, donations_module_1.DonationsModule, sponsorship_module_1.SponsorshipModule, settings_module_1.SettingsModule, permissions_module_1.PermissionsModule, role_permissions_module_1.RolePermissionsModule, media_module_1.MediaModule, albums_module_1.AlbumsModule, venues_module_1.VenuesModule],
+            }), prisma_module_1.PrismaModule, event_occurrences_module_1.EventOccurrencesModule, bhajans_module_1.BhajansModule, coupons_module_1.CouponsModule, pooja_category_module_1.PoojaCategoryModule, notifications_module_1.NotificationsModule, role_users_module_1.RoleUsersModule, users_module_1.UsersModule, roles_module_1.RolesModule, auth_module_1.AuthModule, static_pages_module_1.StaticPagesModule, pooja_module_1.PoojaModule, priest_module_1.PriestModule, booking_module_1.BookingModule, events_module_1.EventsModule, donations_module_1.DonationsModule, sponsorship_module_1.SponsorshipModule, settings_module_1.SettingsModule, permissions_module_1.PermissionsModule, role_permissions_module_1.RolePermissionsModule, media_module_1.MediaModule, albums_module_1.AlbumsModule, venues_module_1.VenuesModule, newsletter_module_1.NewsletterModule, payments_module_1.PaymentsModule],
     })
 ], AppModule);
 //# sourceMappingURL=app.module.js.map

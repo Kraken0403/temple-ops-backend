@@ -1,0 +1,19 @@
+-- CreateTable
+CREATE TABLE `Payment` (
+    `id` INTEGER NOT NULL AUTO_INCREMENT,
+    `userId` INTEGER NULL,
+    `guestEmail` VARCHAR(191) NULL,
+    `guestPhone` VARCHAR(191) NULL,
+    `purpose` ENUM('EVENT', 'PUJA', 'DONATION', 'SPONSORSHIP') NOT NULL,
+    `referenceId` INTEGER NOT NULL,
+    `amount` DOUBLE NOT NULL,
+    `currency` VARCHAR(191) NOT NULL DEFAULT 'INR',
+    `provider` ENUM('PAYPAL') NOT NULL DEFAULT 'PAYPAL',
+    `providerOrderId` VARCHAR(191) NULL,
+    `providerTxnId` VARCHAR(191) NULL,
+    `status` ENUM('PENDING', 'CREATED', 'APPROVED', 'COMPLETED', 'FAILED', 'CANCELLED', 'REFUNDED') NOT NULL DEFAULT 'PENDING',
+    `createdAt` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+    `updatedAt` DATETIME(3) NOT NULL,
+
+    PRIMARY KEY (`id`)
+) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;

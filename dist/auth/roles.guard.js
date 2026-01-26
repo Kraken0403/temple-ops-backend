@@ -10,6 +10,7 @@ var __metadata = (this && this.__metadata) || function (k, v) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.RolesGuard = void 0;
+// src/auth/roles.guard.ts
 const common_1 = require("@nestjs/common");
 const core_1 = require("@nestjs/core");
 const roles_decorator_1 = require("./roles.decorator");
@@ -22,10 +23,16 @@ let RolesGuard = class RolesGuard {
             ctx.getHandler(),
             ctx.getClass(),
         ]);
-        if (!required)
+        if (!required || required.length === 0)
             return true;
-        const { user } = ctx.switchToHttp().getRequest();
-        return required.some(role => user.roles.includes(role));
+        const req = ctx.switchToHttp().getRequest();
+        const user = req.user;
+        if (!user?.roles)
+            return false;
+        const need = required.map(r => String(r).toLowerCase());
+        const have = (Array.isArray(user.roles) ? user.roles : [])
+            .map((r) => String(r).toLowerCase());
+        return need.some(r => have.includes(r));
     }
 };
 exports.RolesGuard = RolesGuard;

@@ -15,14 +15,130 @@ const common_1 = require("@nestjs/common");
 const prisma_service_1 = require("../prisma.service");
 const notifications_service_1 = require("../notifications/notifications.service");
 const timezone_util_1 = require("../common/timezone.util");
+const coupons_service_1 = require("../coupons/coupons.service");
+const validate_coupon_dto_1 = require("../coupons/dto/validate-coupon.dto");
+const distance_service_1 = require("../common/distance.service");
 let BookingService = class BookingService {
-    constructor(prisma, notifications) {
+    constructor(prisma, notifications, coupons, distanceService) {
         this.prisma = prisma;
         this.notifications = notifications;
+        this.coupons = coupons;
+        this.distanceService = distanceService;
         this.tzUtil = new timezone_util_1.TimezoneUtil(prisma);
     }
-    // ✅ Create a booking (snapshot immutable facts)
-    // ✅ Create
+    // ─────────────────────────────────────────────
+    // SETTINGS (single source of truth)
+    // ─────────────────────────────────────────────
+    async getTravelSettings() {
+        const settings = await this.prisma.settings.findUnique({
+            where: { id: 1 },
+            include: { primaryVenue: true }, // ✅ ADD
+        });
+        if (!settings) {
+            throw new common_1.BadRequestException('Travel settings not configured');
+        }
+        // ✅ ensure primary venue exists + has coordinates
+        if (!settings.primaryVenue ||
+            settings.primaryVenue.latitude == null ||
+            settings.primaryVenue.longitude == null) {
+            throw new common_1.BadRequestException('Primary venue location not configured');
+        }
+        return {
+            ratePerUnit: settings.travelRate, // $ per unit
+            freeUnits: settings.freeTravelUnits, // free units
+            maxUnits: settings.maxServiceUnits, // max units
+            unit: settings.travelUnit || 'mile',
+            // keep this if you want, doesn't affect anything
+            avgSpeed: settings.travelAvgSpeed || 25,
+            // ✅ base coords for calculation
+            baseLat: settings.primaryVenue.latitude,
+            baseLng: settings.primaryVenue.longitude,
+        };
+    }
+    // ─────────────────────────────────────────────
+    // QUOTE CALCULATION
+    // ─────────────────────────────────────────────
+    async calculateQuote(params) {
+        const pooja = await this.prisma.pooja.findUnique({
+            where: { id: params.poojaId },
+            include: { venue: true },
+        });
+        if (!pooja || pooja.deletedAt) {
+            throw new common_1.BadRequestException('Pooja not available');
+        }
+        const settings = await this.getTravelSettings();
+        let travelDistance = null;
+        let travelCost = 0;
+        // --------------------------------------------------
+        // 🚗 TRAVEL CALCULATION (ONLY FOR OUTSIDE VENUE)
+        // --------------------------------------------------
+        if (pooja.isOutsideVenue) {
+            if (params.venueLat == null || params.venueLng == null) {
+                throw new common_1.BadRequestException('Location required for outside venue pooja');
+            }
+            const distanceKm = this.distanceService.getDistanceKm(settings.baseLat, // primary venue (global base)
+            settings.baseLng, params.venueLat, params.venueLng);
+            const distanceMiles = distanceKm * 0.621371;
+            travelDistance = Number(distanceMiles.toFixed(2));
+            if (travelDistance > settings.maxUnits) {
+                throw new common_1.BadRequestException('Outside serviceable area');
+            }
+            const billableUnits = Math.max(0, travelDistance - settings.freeUnits);
+            travelCost = Number((billableUnits * settings.ratePerUnit).toFixed(2));
+        }
+        // --------------------------------------------------
+        // 💰 BASE AMOUNT (THIS WAS THE BUG)
+        // --------------------------------------------------
+        if (pooja.isOutsideVenue && pooja.outsideAmount == null) {
+            throw new common_1.BadRequestException('Outside venue selected but outside amount is not configured');
+        }
+        const baseAmount = pooja.isOutsideVenue
+            ? pooja.outsideAmount ?? 0
+            : pooja.amount ?? 0;
+        const subtotal = baseAmount + travelCost;
+        // --------------------------------------------------
+        // 🎟️ COUPON / DISCOUNT
+        // --------------------------------------------------
+        let discount = 0;
+        let total = subtotal;
+        if (params.couponCode) {
+            const quote = await this.coupons.validateAndQuote(params.couponCode, {
+                kind: validate_coupon_dto_1.ValidateKind.POOJA,
+                poojaId: params.poojaId,
+                userId: params.userId,
+            });
+            if (!quote.valid) {
+                throw new common_1.BadRequestException(quote.reason || 'Invalid coupon');
+            }
+            discount = quote.discount ?? 0;
+            total =
+                quote.total ??
+                    Math.max(0, subtotal - discount);
+        }
+        // --------------------------------------------------
+        // 📦 RESPONSE
+        // --------------------------------------------------
+        return {
+            baseAmount,
+            travelDistanceUnits: travelDistance,
+            travelRateApplied: settings.ratePerUnit,
+            freeUnits: settings.freeUnits,
+            travelCost,
+            subtotal,
+            discount,
+            total,
+            travelUnit: settings.unit,
+        };
+    }
+    // ─────────────────────────────────────────────
+    // PUBLIC QUOTE
+    // ─────────────────────────────────────────────
+    async quote(params) {
+        return this.calculateQuote(params);
+    }
+    // ─────────────────────────────────────────────
+    // CREATE BOOKING
+    // ─────────────────────────────────────────────
     async create(dto) {
         const bookingDate = await this.tzUtil.toUTC(dto.bookingDate);
         const start = await this.tzUtil.toUTC(dto.start);
@@ -31,16 +147,24 @@ let BookingService = class BookingService {
             where: { id: dto.poojaId },
             include: { priests: true },
         });
-        if (!pooja)
-            throw new common_1.BadRequestException('Pooja not found');
-        if (pooja.deletedAt)
-            throw new common_1.BadRequestException('This pooja is no longer available');
-        const priest = await this.prisma.priest.findUnique({ where: { id: dto.priestId } });
+        if (!pooja || pooja.deletedAt) {
+            throw new common_1.BadRequestException('Pooja not available');
+        }
+        const priest = await this.prisma.priest.findUnique({
+            where: { id: dto.priestId },
+        });
         if (!priest)
             throw new common_1.BadRequestException('Priest not found');
-        const isAssignedPriest = pooja.priests.some(p => p.id === dto.priestId);
-        if (!isAssignedPriest)
+        if (!pooja.priests.some(p => p.id === dto.priestId)) {
             throw new common_1.BadRequestException('This priest is not assigned to the selected pooja');
+        }
+        const pricing = await this.calculateQuote({
+            poojaId: dto.poojaId,
+            userId: dto.userId,
+            venueLat: dto.venueLat,
+            venueLng: dto.venueLng,
+            couponCode: dto.couponCode,
+        });
         const created = await this.prisma.booking.create({
             data: {
                 userId: dto.userId ?? undefined,
@@ -49,23 +173,38 @@ let BookingService = class BookingService {
                 bookingDate,
                 start,
                 end,
-                // snapshots
-                amountAtBooking: pooja.amount,
+                amountAtBooking: pricing.total,
                 poojaNameAtBooking: pooja.name,
                 priestNameAtBooking: priest.name ?? null,
-                // optional fields
-                userName: dto.userName ?? undefined,
-                userEmail: dto.userEmail ?? undefined,
-                userPhone: dto.userPhone ?? undefined,
+                userName: dto.userName || null,
+                userEmail: dto.userEmail || null,
+                userPhone: dto.userPhone || null,
                 venueAddress: dto.venueAddress ?? undefined,
                 venueState: dto.venueState ?? undefined,
                 venueZip: dto.venueZip ?? undefined,
-            },
-            include: {
-                pooja: { select: { id: true, name: true } },
-                priest: { select: { id: true, name: true } },
+                venueLat: dto.venueLat ?? undefined,
+                venueLng: dto.venueLng ?? undefined,
+                couponCode: dto.couponCode?.trim() || null,
+                discountAmount: pricing.discount,
+                subtotal: pricing.subtotal,
+                total: pricing.total,
+                // ✅ SCHEMA-MATCHED FIELDS
+                travelDistance: pricing.travelDistanceUnits,
+                travelRate: pricing.travelRateApplied,
+                freeTravelUnits: pricing.freeUnits,
+                travelCost: pricing.travelCost,
+                travelUnit: pricing.travelUnit,
+                // freeTravelUnits: pricing.freeTravelUnits,
             },
         });
+        if (dto.couponCode && pricing.discount > 0) {
+            await this.coupons.recordRedemption({
+                couponCode: dto.couponCode.trim(),
+                amountApplied: pricing.discount,
+                userId: dto.userId ?? null,
+                target: { type: 'pooja', poojaBookingId: created.id },
+            });
+        }
         await this.notifications.sendBookingCreated(created.id);
         return {
             ...created,
@@ -74,14 +213,12 @@ let BookingService = class BookingService {
             end: await this.tzUtil.fromUTC(created.end),
         };
     }
-    // ✅ Find all
+    // ─────────────────────────────────────────────
+    // READ / UPDATE / DELETE (UNCHANGED)
+    // ─────────────────────────────────────────────
     async findAll() {
         const list = await this.prisma.booking.findMany({
             orderBy: { createdAt: 'desc' },
-            include: {
-                pooja: { select: { id: true, name: true } },
-                priest: { select: { id: true, name: true } },
-            },
         });
         return Promise.all(list.map(async (b) => ({
             ...b,
@@ -90,13 +227,30 @@ let BookingService = class BookingService {
             end: await this.tzUtil.fromUTC(b.end),
         })));
     }
-    // ✅ Find one
+    async findAllByPriest(priestId) {
+        const list = await this.prisma.booking.findMany({
+            where: { priestId },
+            orderBy: { createdAt: 'desc' },
+        });
+        return Promise.all(list.map(async (b) => ({
+            ...b,
+            bookingDate: await this.tzUtil.fromUTC(b.bookingDate),
+            start: await this.tzUtil.fromUTC(b.start),
+            end: await this.tzUtil.fromUTC(b.end),
+        })));
+    }
     async findOne(id) {
         const b = await this.prisma.booking.findUnique({
             where: { id },
             include: {
-                pooja: { select: { id: true, name: true } },
-                priest: { select: { id: true, name: true } },
+                user: {
+                    select: {
+                        id: true,
+                        email: true, // ✅ only valid field
+                    },
+                },
+                pooja: true,
+                priest: true,
             },
         });
         if (!b)
@@ -108,83 +262,22 @@ let BookingService = class BookingService {
             end: await this.tzUtil.fromUTC(b.end),
         };
     }
-    // ✅ Update
     async update(id, dto) {
-        const existing = await this.prisma.booking.findUnique({
-            where: { id },
-            include: { pooja: { include: { priests: true } }, priest: true },
-        });
+        const existing = await this.prisma.booking.findUnique({ where: { id } });
         if (!existing)
             throw new common_1.NotFoundException('Booking not found');
         const data = {};
-        let newPoojaId = existing.poojaId;
-        let newPriestId = existing.priestId;
-        // potential pooja change
-        if (dto.poojaId !== undefined) {
-            const pooja = await this.prisma.pooja.findUnique({
-                where: { id: dto.poojaId },
-                include: { priests: true },
-            });
-            if (!pooja)
-                throw new common_1.BadRequestException('Pooja not found');
-            data.poojaId = dto.poojaId;
-            newPoojaId = dto.poojaId;
-        }
-        // potential priest change
-        if (dto.priestId !== undefined) {
-            const priest = await this.prisma.priest.findUnique({ where: { id: dto.priestId } });
-            if (!priest)
-                throw new common_1.BadRequestException('Priest not found');
-            data.priestId = dto.priestId;
-            newPriestId = dto.priestId;
-        }
-        // validate pair if changed
-        if (dto.poojaId !== undefined || dto.priestId !== undefined) {
-            const poojaForCheck = await this.prisma.pooja.findUnique({
-                where: { id: newPoojaId },
-                include: { priests: { select: { id: true } } },
-            });
-            const isAssigned = poojaForCheck?.priests?.some(p => p.id === newPriestId);
-            if (!isAssigned) {
-                throw new common_1.BadRequestException(`Priest ${newPriestId} is not assigned to pooja ${newPoojaId}`);
-            }
-            const newPooja = await this.prisma.pooja.findUnique({ where: { id: newPoojaId } });
-            const newPriest = await this.prisma.priest.findUnique({ where: { id: newPriestId } });
-            data.amountAtBooking = newPooja?.amount;
-            data.poojaNameAtBooking = newPooja?.name ?? existing.poojaNameAtBooking;
-            data.priestNameAtBooking = newPriest?.name ?? existing.priestNameAtBooking;
-        }
-        // timezone-aware updates
-        if (dto.bookingDate !== undefined)
-            data.bookingDate = await this.tzUtil.toUTC(dto.bookingDate);
-        if (dto.start !== undefined)
-            data.start = await this.tzUtil.toUTC(dto.start);
-        if (dto.end !== undefined)
-            data.end = await this.tzUtil.toUTC(dto.end);
-        // standard fields
-        if (dto.userId !== undefined)
-            data.userId = dto.userId;
-        if (dto.userName !== undefined)
-            data.userName = dto.userName;
-        if (dto.userEmail !== undefined)
-            data.userEmail = dto.userEmail;
-        if (dto.userPhone !== undefined)
-            data.userPhone = dto.userPhone;
-        if (dto.venueAddress !== undefined)
-            data.venueAddress = dto.venueAddress;
-        if (dto.venueState !== undefined)
-            data.venueState = dto.venueState;
-        if (dto.venueZip !== undefined)
-            data.venueZip = dto.venueZip;
         if (dto.status !== undefined)
             data.status = dto.status;
+        if (dto.bookingDate)
+            data.bookingDate = await this.tzUtil.toUTC(dto.bookingDate);
+        if (dto.start)
+            data.start = await this.tzUtil.toUTC(dto.start);
+        if (dto.end)
+            data.end = await this.tzUtil.toUTC(dto.end);
         const updated = await this.prisma.booking.update({
             where: { id },
             data,
-            include: {
-                pooja: { select: { id: true, name: true } },
-                priest: { select: { id: true, name: true } },
-            },
         });
         await this.notifications.sendBookingUpdated(updated.id);
         return {
@@ -194,27 +287,21 @@ let BookingService = class BookingService {
             end: await this.tzUtil.fromUTC(updated.end),
         };
     }
-    // ✅ Delete (hard-delete). Consider soft-cancel in future.
     async remove(id) {
         const existing = await this.prisma.booking.findUnique({ where: { id } });
         if (!existing)
             throw new common_1.NotFoundException('Booking not found');
         await this.notifications.sendBookingCanceled(existing.id);
-        try {
-            await this.prisma.booking.delete({ where: { id } });
-            return { success: true };
-        }
-        catch (e) {
-            if (e?.code === 'P2025')
-                throw new common_1.NotFoundException('Booking not found');
-            throw e;
-        }
+        await this.prisma.booking.delete({ where: { id } });
+        return { success: true };
     }
 };
 exports.BookingService = BookingService;
 exports.BookingService = BookingService = __decorate([
     (0, common_1.Injectable)(),
     __metadata("design:paramtypes", [prisma_service_1.PrismaService,
-        notifications_service_1.NotificationsService])
+        notifications_service_1.NotificationsService,
+        coupons_service_1.CouponsService,
+        distance_service_1.DistanceService])
 ], BookingService);
 //# sourceMappingURL=booking.service.js.map

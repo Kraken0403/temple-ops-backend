@@ -1,0 +1,3 @@
+-- AlterTable
+ALTER TABLE `eventbooking` ADD COLUMN `paymentId` INTEGER NULL,
+    MODIFY `status` VARCHAR(191) NOT NULL DEFAULT 'PENDING';

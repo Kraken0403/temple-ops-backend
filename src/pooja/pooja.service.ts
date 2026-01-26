@@ -119,7 +119,7 @@ export class PoojaService {
   /** Update using pure JSON */
   async updateFromJson(id: number, dto: UpdatePoojaDto) {
     await this.ensureExists(id)
-    console.log('DTO outsideAmount:', dto.outsideAmount)
+    // console.log('DTO outsideAmount:', dto.outsideAmount)
 
     const data: any = {}
 
@@ -149,12 +149,19 @@ export class PoojaService {
 
     if (
       dto.isOutsideVenue === false &&
-      Object.prototype.hasOwnProperty.call(dto, 'outsideAmount')
+      dto.outsideAmount !== undefined &&
+      dto.outsideAmount !== null
     ) {
       throw new BadRequestException(
-        'outsideAmount should not be provided when isOutsideVenue = false'
+        'outsideAmount should be null when isOutsideVenue = false'
       )
     }
+
+    // Normalize outsideAmount
+      if (dto.isOutsideVenue === false) {
+        data.outsideAmount = null
+      }
+
 
 
     if (dto.date !== undefined) data.date = dto.date ? new Date(dto.date) : null

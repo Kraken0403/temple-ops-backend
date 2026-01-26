@@ -25,8 +25,8 @@ let PoojaService = class PoojaService {
                 priests: true,
                 bookings: true,
                 featuredMedia: true,
-                categories: true, // 🔹
-                venue: true, // 🔹
+                categories: true,
+                venue: true,
                 gallery: { include: { media: true }, orderBy: { sortOrder: 'asc' } },
             }
         });
@@ -39,18 +39,26 @@ let PoojaService = class PoojaService {
                 priests: true,
                 bookings: true,
                 featuredMedia: true,
-                categories: true, // 🔹
-                venue: true, // 🔹
+                categories: true,
+                venue: true,
                 gallery: { include: { media: true }, orderBy: { sortOrder: 'asc' } },
             }
         });
     }
     /** Create using pure JSON */
     async createFromJson(dto) {
-        const { name, priestIds, categoryIds, amount, durationMin, prepTimeMin, bufferMin, isInVenue, isOutsideVenue, date, time, venueId, venueAddress, mapLink, allowedZones, includeFood, includeHall, materials, notes, description, featuredMediaId, clearFeaturedMedia, } = dto;
+        const { name, priestIds, categoryIds, amount, outsideAmount, durationMin, prepTimeMin, bufferMin, isInVenue, isOutsideVenue, date, time, venueId, venueAddress, mapLink, allowedZones, includeFood, includeHall, materials, notes, description, featuredMediaId, clearFeaturedMedia, } = dto;
+        // ✅ VALIDATION: outside amount rules
+        if (isOutsideVenue && outsideAmount == null) {
+            throw new common_1.BadRequestException('outsideAmount is required when isOutsideVenue = true');
+        }
+        if (!isOutsideVenue && outsideAmount != null) {
+            throw new common_1.BadRequestException('outsideAmount should not be provided when isOutsideVenue = false');
+        }
         const data = {
             name,
             amount,
+            outsideAmount: outsideAmount ?? null,
             durationMin,
             prepTimeMin,
             bufferMin,
@@ -58,9 +66,9 @@ let PoojaService = class PoojaService {
             isOutsideVenue,
             ...(date ? { date: new Date(date) } : {}),
             ...(time ? { time: new Date(time) } : {}),
-            // in-venue relation (optional)
-            ...(typeof venueId === 'number' ? { venue: { connect: { id: venueId } } } : {}),
-            // outside-venue fields
+            ...(typeof venueId === 'number'
+                ? { venue: { connect: { id: venueId } } }
+                : {}),
             venueAddress: venueAddress ?? null,
             mapLink: mapLink ?? null,
             ...(allowedZones !== undefined ? { allowedZones } : {}),
@@ -69,11 +77,11 @@ let PoojaService = class PoojaService {
             materials: materials ?? null,
             notes: notes ?? null,
             description: description ?? null,
-            // relations
             priests: { connect: (priestIds ?? []).map(id => ({ id })) },
-            ...(categoryIds?.length ? { categories: { connect: categoryIds.map(id => ({ id })) } } : {}),
+            ...(categoryIds?.length
+                ? { categories: { connect: categoryIds.map(id => ({ id })) } }
+                : {}),
         };
-        // ✅ On CREATE: either connect or omit
         if (!clearFeaturedMedia && typeof featuredMediaId === 'number') {
             data.featuredMedia = { connect: { id: featuredMediaId } };
         }
@@ -92,11 +100,14 @@ let PoojaService = class PoojaService {
     /** Update using pure JSON */
     async updateFromJson(id, dto) {
         await this.ensureExists(id);
+        // console.log('DTO outsideAmount:', dto.outsideAmount)
         const data = {};
         if (dto.name !== undefined)
             data.name = dto.name;
         if (dto.amount !== undefined)
             data.amount = dto.amount;
+        if (dto.outsideAmount !== undefined)
+            data.outsideAmount = dto.outsideAmount ?? null;
         if (dto.durationMin !== undefined)
             data.durationMin = dto.durationMin;
         if (dto.prepTimeMin !== undefined)
@@ -107,11 +118,25 @@ let PoojaService = class PoojaService {
             data.isInVenue = dto.isInVenue;
         if (dto.isOutsideVenue !== undefined)
             data.isOutsideVenue = dto.isOutsideVenue;
+        // ✅ VALIDATION ON UPDATE (only when relevant fields provided)
+        if (dto.isOutsideVenue === true &&
+            Object.prototype.hasOwnProperty.call(dto, 'outsideAmount') &&
+            dto.outsideAmount === null) {
+            throw new common_1.BadRequestException('outsideAmount is required when isOutsideVenue = true');
+        }
+        if (dto.isOutsideVenue === false &&
+            dto.outsideAmount !== undefined &&
+            dto.outsideAmount !== null) {
+            throw new common_1.BadRequestException('outsideAmount should be null when isOutsideVenue = false');
+        }
+        // Normalize outsideAmount
+        if (dto.isOutsideVenue === false) {
+            data.outsideAmount = null;
+        }
         if (dto.date !== undefined)
             data.date = dto.date ? new Date(dto.date) : null;
         if (dto.time !== undefined)
             data.time = dto.time ? new Date(dto.time) : null;
-        // venue link toggle
         if (dto.venueId !== undefined) {
             const v = dto.venueId;
             if (v === null) {
@@ -140,11 +165,10 @@ let PoojaService = class PoojaService {
         if (dto.priestIds !== undefined) {
             data.priests = { set: (dto.priestIds ?? []).map(i => ({ id: i })) };
         }
-        // 🔹 categories (replace whole set if provided)
         if (dto.categoryIds !== undefined) {
             const ids = (dto.categoryIds ?? [])
                 .map(Number)
-                .filter((n) => Number.isFinite(n)); // <-- typed param fixes TS7006
+                .filter((n) => Number.isFinite(n));
             data.categories = { set: ids.map(id => ({ id })) };
         }
         if (dto.clearFeaturedMedia) {
@@ -166,11 +190,7 @@ let PoojaService = class PoojaService {
             }
         });
     }
-    /**
-     * Delete a pooja
-     * - Default: SOFT DELETE (archive) → sets deletedAt, bookings remain intact
-     * - Hard delete (`force=true`): only allowed if there are NO bookings
-     */
+    /** Delete (soft / hard) */
     async remove(id, force = false) {
         const pooja = await this.prisma.pooja.findUnique({
             where: { id },
@@ -183,7 +203,6 @@ let PoojaService = class PoojaService {
                 throw new common_1.BadRequestException('Cannot hard delete: bookings exist. The pooja has been kept to preserve booking history.');
             }
             return this.prisma.$transaction(async (tx) => {
-                // clear m:n relations + gallery, then delete
                 await tx.pooja.update({
                     where: { id },
                     data: { priests: { set: [] }, categories: { set: [] } }
@@ -254,7 +273,6 @@ let PoojaService = class PoojaService {
         await this.prisma.poojaMedia.deleteMany({ where: { poojaId, mediaId } });
         return { ok: true };
     }
-    // ---- utils ----
     async ensureExists(id) {
         const exists = await this.prisma.pooja.count({ where: { id } });
         if (!exists)

@@ -13,12 +13,13 @@ const events_service_1 = require("./events.service");
 const events_controller_1 = require("./events.controller");
 const prisma_service_1 = require("../prisma.service");
 const notifications_module_1 = require("../notifications/notifications.module");
+const coupons_module_1 = require("../coupons/coupons.module"); // ✅
 let EventsModule = class EventsModule {
 };
 exports.EventsModule = EventsModule;
 exports.EventsModule = EventsModule = __decorate([
     (0, common_1.Module)({
-        imports: [notifications_module_1.NotificationsModule],
+        imports: [notifications_module_1.NotificationsModule, coupons_module_1.CouponsModule], // ✅
         controllers: [events_controller_1.EventsController],
         providers: [events_service_1.EventsService, prisma_service_1.PrismaService],
     })

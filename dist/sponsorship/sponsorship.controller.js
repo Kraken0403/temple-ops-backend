@@ -13,7 +13,6 @@ var __param = (this && this.__param) || function (paramIndex, decorator) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.SponsorshipController = void 0;
-// src/sponsorship/sponsorship.controller.ts
 const common_1 = require("@nestjs/common");
 const sponsorship_service_1 = require("./sponsorship.service");
 const create_sponsorship_type_dto_1 = require("./dto/create-sponsorship-type.dto");
@@ -42,10 +41,11 @@ let SponsorshipController = class SponsorshipController {
     updateEventSponsorship(eventSponsorshipId, dto) {
         return this.svc.updateEventSponsorship(eventSponsorshipId, dto);
     }
+    // list all event sponsorship rows
     getAllEventSponsorships() {
         return this.svc.getAllEventSponsorships();
     }
-    // 5. Get all sponsorship types (admin)
+    // list all sponsorship types (admin)
     getAllTypes() {
         return this.svc.getAllTypes();
     }
@@ -86,7 +86,7 @@ let SponsorshipController = class SponsorshipController {
     deleteEventSponsorshipById(id) {
         return this.svc.deleteEventSponsorshipById(id);
     }
-    /** You already have this: delete by composite key (eventId + sponsorshipTypeId). */
+    /** Delete by composite key (eventId + sponsorshipTypeId). */
     removeSponsorshipAssignment(eventId, sponsorshipTypeId) {
         return this.svc.removeSponsorshipAssignment(eventId, sponsorshipTypeId);
     }
