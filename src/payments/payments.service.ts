@@ -42,15 +42,30 @@ export class PaymentsService {
      async createPaypalOrder(dto: {
       purpose: 'EVENT' | 'SERVICES' | 'DONATION' | 'SPONSORSHIP'
       referenceId: number
-      amount: number
+      amount: number | string
       currency?: string
       userId?: number
     }) {
-      if (dto.amount <= 0) {
-        throw new Error('Amount must be greater than zero')
+      /* ─────────────────────────
+         0️⃣ NORMALIZE & VALIDATE AMOUNT
+      ───────────────────────── */
+    
+      const amountNum =
+        typeof dto.amount === 'string'
+          ? Number(dto.amount)
+          : dto.amount
+    
+      if (!Number.isFinite(amountNum) || amountNum <= 0) {
+        throw new Error('Amount must be a valid number greater than zero')
       }
     
-      // ✅ PURPOSE-AWARE VALIDATION
+      const currency = dto.currency ?? 'USD'
+      const amountValue = amountNum.toFixed(2) // ✅ SAFE NOW
+    
+      /* ─────────────────────────
+         1️⃣ PURPOSE-AWARE VALIDATION
+      ───────────────────────── */
+    
       switch (dto.purpose) {
         case 'EVENT':
           await this.prisma.eventBooking.findUniqueOrThrow({
@@ -77,22 +92,25 @@ export class PaymentsService {
           break
       }
     
-      const currency = dto.currency ?? 'USD'
-      const amountValue = dto.amount.toFixed(2)
+      /* ─────────────────────────
+         2️⃣ CREATE INTERNAL PAYMENT
+      ───────────────────────── */
     
-      // 1️⃣ Create internal payment record
       const payment = await this.prisma.payment.create({
         data: {
           purpose: dto.purpose,
           referenceId: dto.referenceId,
-          amount: dto.amount,
+          amount: amountNum, // ✅ STORE NUMBER, NOT STRING
           currency,
           provider: 'PAYPAL',
           status: 'CREATED',
         },
       })
     
-      // 2️⃣ Build PayPal order
+      /* ─────────────────────────
+         3️⃣ BUILD PAYPAL ORDER
+      ───────────────────────── */
+    
       const request = new paypal.orders.OrdersCreateRequest()
       request.prefer('return=representation')
     
@@ -103,7 +121,7 @@ export class PaymentsService {
             reference_id: `PAYMENT_${payment.id}`,
             amount: {
               currency_code: currency,
-              value: amountValue,
+              value: amountValue, // PayPal expects STRING ✔
             },
             description: this.getPaypalItemName(dto.purpose),
           },
@@ -116,10 +134,20 @@ export class PaymentsService {
         },
       })
     
-      // 3️⃣ Execute PayPal order
+      /* ─────────────────────────
+         4️⃣ EXECUTE PAYPAL ORDER
+      ───────────────────────── */
+    
       const order = await this.client.execute(request)
     
-      // 4️⃣ Store PayPal order ID
+      if (!order?.result?.id) {
+        throw new Error('PayPal order creation failed')
+      }
+    
+      /* ─────────────────────────
+         5️⃣ STORE PAYPAL ORDER ID
+      ───────────────────────── */
+    
       await this.prisma.payment.update({
         where: { id: payment.id },
         data: {
@@ -127,8 +155,13 @@ export class PaymentsService {
         },
       })
     
+      /* ─────────────────────────
+         6️⃣ RETURN TO FRONTEND
+      ───────────────────────── */
+    
       return { orderId: order.result.id }
     }
+    
     
   /* ─────────────────────────────────────────
      CAPTURE PAYPAL ORDER (DIRECT FLOW)
