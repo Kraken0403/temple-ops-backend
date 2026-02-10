@@ -1,0 +1,2 @@
+-- AlterTable
+ALTER TABLE `donationrecord` ADD COLUMN `status` ENUM('PENDING', 'COMPLETED', 'FAILED') NOT NULL DEFAULT 'PENDING';

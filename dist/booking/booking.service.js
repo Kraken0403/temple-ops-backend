@@ -67,17 +67,19 @@ let BookingService = class BookingService {
             throw new common_1.BadRequestException('Pooja not available');
         }
         const settings = await this.getTravelSettings();
+        // 🔑 SINGLE SOURCE OF TRUTH
+        const isCustomVenue = pooja.isOutsideVenue === true &&
+            params.venueType === 'CUSTOM';
         let travelDistance = null;
         let travelCost = 0;
         // --------------------------------------------------
-        // 🚗 TRAVEL CALCULATION (ONLY FOR OUTSIDE VENUE)
+        // 🚗 TRAVEL CALCULATION (ONLY IF USER CHOSE CUSTOM)
         // --------------------------------------------------
-        if (pooja.isOutsideVenue) {
+        if (isCustomVenue) {
             if (params.venueLat == null || params.venueLng == null) {
                 throw new common_1.BadRequestException('Location required for outside venue pooja');
             }
-            const distanceKm = this.distanceService.getDistanceKm(settings.baseLat, // primary venue (global base)
-            settings.baseLng, params.venueLat, params.venueLng);
+            const distanceKm = this.distanceService.getDistanceKm(settings.baseLat, settings.baseLng, params.venueLat, params.venueLng);
             const distanceMiles = distanceKm * 0.621371;
             travelDistance = Number(distanceMiles.toFixed(2));
             if (travelDistance > settings.maxUnits) {
@@ -87,12 +89,12 @@ let BookingService = class BookingService {
             travelCost = Number((billableUnits * settings.ratePerUnit).toFixed(2));
         }
         // --------------------------------------------------
-        // 💰 BASE AMOUNT (THIS WAS THE BUG)
+        // 💰 BASE AMOUNT (CORRECTED)
         // --------------------------------------------------
-        if (pooja.isOutsideVenue && pooja.outsideAmount == null) {
+        if (isCustomVenue && pooja.outsideAmount == null) {
             throw new common_1.BadRequestException('Outside venue selected but outside amount is not configured');
         }
-        const baseAmount = pooja.isOutsideVenue
+        const baseAmount = isCustomVenue
             ? pooja.outsideAmount ?? 0
             : pooja.amount ?? 0;
         const subtotal = baseAmount + travelCost;
@@ -163,6 +165,7 @@ let BookingService = class BookingService {
             userId: dto.userId,
             venueLat: dto.venueLat,
             venueLng: dto.venueLng,
+            venueType: dto.venueType, // 🔑
             couponCode: dto.couponCode,
         });
         const created = await this.prisma.booking.create({
@@ -173,6 +176,9 @@ let BookingService = class BookingService {
                 bookingDate,
                 start,
                 end,
+                status: 'pending',
+                // 🔥 REQUIRED SNAPSHOT
+                venueType: dto.venueType, // TEMPLE | CUSTOM
                 amountAtBooking: pricing.total,
                 poojaNameAtBooking: pooja.name,
                 priestNameAtBooking: priest.name ?? null,
@@ -182,30 +188,29 @@ let BookingService = class BookingService {
                 venueAddress: dto.venueAddress ?? undefined,
                 venueState: dto.venueState ?? undefined,
                 venueZip: dto.venueZip ?? undefined,
-                venueLat: dto.venueLat ?? undefined,
-                venueLng: dto.venueLng ?? undefined,
+                // only present for CUSTOM venue
+                venueLat: dto.venueType === 'CUSTOM' ? dto.venueLat ?? undefined : undefined,
+                venueLng: dto.venueType === 'CUSTOM' ? dto.venueLng ?? undefined : undefined,
                 couponCode: dto.couponCode?.trim() || null,
                 discountAmount: pricing.discount,
                 subtotal: pricing.subtotal,
                 total: pricing.total,
-                // ✅ SCHEMA-MATCHED FIELDS
                 travelDistance: pricing.travelDistanceUnits,
                 travelRate: pricing.travelRateApplied,
                 freeTravelUnits: pricing.freeUnits,
                 travelCost: pricing.travelCost,
                 travelUnit: pricing.travelUnit,
-                // freeTravelUnits: pricing.freeTravelUnits,
             },
         });
-        if (dto.couponCode && pricing.discount > 0) {
-            await this.coupons.recordRedemption({
-                couponCode: dto.couponCode.trim(),
-                amountApplied: pricing.discount,
-                userId: dto.userId ?? null,
-                target: { type: 'pooja', poojaBookingId: created.id },
-            });
-        }
-        await this.notifications.sendBookingCreated(created.id);
+        // if (dto.couponCode && pricing.discount > 0) {
+        //   await this.coupons.recordRedemption({
+        //     couponCode: dto.couponCode.trim(),
+        //     amountApplied: pricing.discount,
+        //     userId: dto.userId ?? null,
+        //     target: { type: 'pooja', poojaBookingId: created.id },
+        //   })
+        // }
+        // await this.notifications.sendBookingCreated(created.id)
         return {
             ...created,
             bookingDate: await this.tzUtil.fromUTC(created.bookingDate),

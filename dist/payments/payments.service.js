@@ -16,10 +16,12 @@ const prisma_service_1 = require("../prisma.service");
 const coupons_service_1 = require("../coupons/coupons.service");
 const paypal = require("@paypal/checkout-server-sdk");
 const paypal_client_1 = require("./paypal.client");
+const notifications_service_1 = require("../notifications/notifications.service");
 let PaymentsService = PaymentsService_1 = class PaymentsService {
-    constructor(prisma, coupons) {
+    constructor(prisma, coupons, notifications) {
         this.prisma = prisma;
         this.coupons = coupons;
+        this.notifications = notifications;
         this.logger = new common_1.Logger(PaymentsService_1.name);
         this.client = (0, paypal_client_1.paypalClient)();
     }
@@ -45,9 +47,29 @@ let PaymentsService = PaymentsService_1 = class PaymentsService {
         if (dto.amount <= 0) {
             throw new Error('Amount must be greater than zero');
         }
-        const booking = await this.prisma.eventBooking.findUnique({
-            where: { id: dto.referenceId },
-        });
+        // ✅ PURPOSE-AWARE VALIDATION
+        switch (dto.purpose) {
+            case 'EVENT':
+                await this.prisma.eventBooking.findUniqueOrThrow({
+                    where: { id: dto.referenceId },
+                });
+                break;
+            case 'SERVICES':
+                await this.prisma.booking.findUniqueOrThrow({
+                    where: { id: dto.referenceId },
+                });
+                break;
+            case 'DONATION':
+                await this.prisma.donationRecord.findUniqueOrThrow({
+                    where: { id: dto.referenceId },
+                });
+                break;
+            case 'SPONSORSHIP':
+                await this.prisma.sponsorshipBooking.findUniqueOrThrow({
+                    where: { id: dto.referenceId },
+                });
+                break;
+        }
         const currency = dto.currency ?? 'USD';
         const amountValue = dto.amount.toFixed(2);
         // 1️⃣ Create internal payment record
@@ -117,13 +139,14 @@ let PaymentsService = PaymentsService_1 = class PaymentsService {
         const payment = await this.prisma.payment.findFirst({
             where: { providerOrderId: orderId },
         });
-        console.log('HANDLE COMPLETE RAN');
         if (!payment) {
             this.logger.warn(`Payment not found for orderId ${orderId}`);
             return;
         }
+        // 🔒 Idempotency
         if (payment.status === 'COMPLETED')
             return;
+        // 1️⃣ Mark payment completed (FAST)
         await this.prisma.payment.update({
             where: { id: payment.id },
             data: {
@@ -131,53 +154,158 @@ let PaymentsService = PaymentsService_1 = class PaymentsService {
                 providerTxnId: txnId,
             },
         });
-        // 2️⃣ Handle EVENT booking confirmation
-        if (payment.purpose === 'EVENT') {
-            await this.prisma.$transaction(async (tx) => {
-                const booking = await tx.eventBooking.findUnique({
+        // 2️⃣ Route by purpose
+        switch (payment.purpose) {
+            /* ───────────── EVENT ───────────── */
+            case 'EVENT': {
+                let confirmedBookingId = null;
+                await this.prisma.$transaction(async (tx) => {
+                    const booking = await tx.eventBooking.findUnique({
+                        where: { id: payment.referenceId },
+                    });
+                    if (!booking) {
+                        throw new Error(`EventBooking ${payment.referenceId} not found`);
+                    }
+                    // Attach payment once
+                    if (!booking.paymentId) {
+                        await tx.eventBooking.update({
+                            where: { id: booking.id },
+                            data: { paymentId: payment.id },
+                        });
+                    }
+                    if (booking.status !== 'CONFIRMED') {
+                        await tx.eventBooking.update({
+                            where: { id: booking.id },
+                            data: { status: 'CONFIRMED' },
+                        });
+                        await tx.eventOccurrence.update({
+                            where: { id: booking.eventOccurrenceId },
+                            data: {
+                                bookedCount: { increment: booking.pax },
+                            },
+                        });
+                    }
+                    // Coupon redemption (DB only)
+                    const discount = booking.discountAmount ?? 0;
+                    if (booking.couponCode && discount > 0) {
+                        await this.coupons.recordRedemption({
+                            couponCode: booking.couponCode,
+                            amountApplied: discount,
+                            userId: booking.userId ?? null,
+                            target: {
+                                type: 'event',
+                                eventBookingId: booking.id,
+                            },
+                        }, tx);
+                    }
+                    confirmedBookingId = booking.id;
+                });
+                // 📧 AFTER COMMIT
+                if (confirmedBookingId) {
+                    await this.notifications.sendEventBookingCreated(confirmedBookingId);
+                }
+                break;
+            }
+            /* ───────────── SERVICES (POOJA) ───────────── */
+            case 'SERVICES': {
+                let confirmedBookingId = null;
+                await this.prisma.$transaction(async (tx) => {
+                    const booking = await tx.booking.findUnique({
+                        where: { id: payment.referenceId },
+                    });
+                    if (!booking) {
+                        throw new Error(`Pooja Booking ${payment.referenceId} not found`);
+                    }
+                    // 🔒 Idempotency
+                    if (booking.status === 'confirmed') {
+                        confirmedBookingId = booking.id;
+                        return;
+                    }
+                    // Confirm booking
+                    await tx.booking.update({
+                        where: { id: booking.id },
+                        data: { status: 'confirmed' },
+                    });
+                    // Coupon redemption
+                    const discount = booking.discountAmount ?? 0;
+                    if (booking.couponCode && discount > 0) {
+                        await this.coupons.recordRedemption({
+                            couponCode: booking.couponCode,
+                            amountApplied: discount,
+                            userId: booking.userId ?? null,
+                            target: {
+                                type: 'pooja',
+                                poojaBookingId: booking.id,
+                            },
+                        }, tx);
+                    }
+                    confirmedBookingId = booking.id;
+                });
+                // 📧 AFTER COMMIT
+                if (confirmedBookingId) {
+                    await this.notifications.sendBookingConfirmed(confirmedBookingId);
+                }
+                break;
+            }
+            /* ───────────── DONATION ───────────── */
+            case 'DONATION': {
+                // 1️⃣ Fetch donation
+                const donation = await this.prisma.donationRecord.findUnique({
                     where: { id: payment.referenceId },
                 });
-                if (!booking) {
-                    throw new Error(`Booking ${payment.referenceId} not found`);
+                if (!donation) {
+                    throw new Error(`DonationRecord ${payment.referenceId} not found`);
                 }
-                // 🔒 Always attach paymentId
-                if (!booking.paymentId) {
-                    await tx.eventBooking.update({
+                // 🔒 Idempotency guard (webhook-safe)
+                if (donation.status === 'COMPLETED') {
+                    return;
+                }
+                // 2️⃣ Mark donation as completed
+                await this.prisma.donationRecord.update({
+                    where: { id: donation.id },
+                    data: {
+                        status: 'COMPLETED',
+                    },
+                });
+                // 3️⃣ Send thank-you email ONLY AFTER payment
+                await this.notifications.sendDonationReceived(donation.id);
+                break;
+            }
+            /* ───────────── SPONSORSHIP ───────────── */
+            case 'SPONSORSHIP': {
+                let confirmedBookingId = null;
+                await this.prisma.$transaction(async (tx) => {
+                    const booking = await tx.sponsorshipBooking.findUnique({
+                        where: { id: payment.referenceId },
+                        include: {
+                            eventSponsorship: {
+                                include: { bookings: true },
+                            },
+                        },
+                    });
+                    if (!booking) {
+                        throw new Error(`SponsorshipBooking ${payment.referenceId} not found`);
+                    }
+                    if (booking.status === 'confirmed') {
+                        confirmedBookingId = booking.id;
+                        return;
+                    }
+                    const confirmedCount = booking.eventSponsorship.bookings.filter((b) => b.status === 'confirmed').length;
+                    if (confirmedCount >= booking.eventSponsorship.maxSlots) {
+                        throw new Error('Sponsorship slots exhausted');
+                    }
+                    await tx.sponsorshipBooking.update({
                         where: { id: booking.id },
-                        data: {
-                            paymentId: payment.id,
-                        },
+                        data: { status: 'confirmed' },
                     });
+                    confirmedBookingId = booking.id;
+                });
+                // 📧 AFTER COMMIT
+                if (confirmedBookingId) {
+                    await this.notifications.sendSponsorshipBooked(confirmedBookingId);
                 }
-                // ✅ Confirm booking once
-                if (booking.status !== 'CONFIRMED') {
-                    await tx.eventBooking.update({
-                        where: { id: booking.id },
-                        data: {
-                            status: 'CONFIRMED',
-                        },
-                    });
-                    await tx.eventOccurrence.update({
-                        where: { id: booking.eventOccurrenceId },
-                        data: {
-                            bookedCount: { increment: booking.pax },
-                        },
-                    });
-                }
-                // 🎟️ Record coupon redemption AFTER payment
-                const discount = booking.discountAmount ?? 0;
-                if (booking.couponCode && discount > 0) {
-                    await this.coupons.recordRedemption({
-                        couponCode: booking.couponCode,
-                        amountApplied: discount,
-                        userId: booking.userId ?? null,
-                        target: {
-                            type: 'event',
-                            eventBookingId: booking.id,
-                        },
-                    }, tx);
-                }
-            });
+                break;
+            }
         }
     }
 };
@@ -185,6 +313,7 @@ exports.PaymentsService = PaymentsService;
 exports.PaymentsService = PaymentsService = PaymentsService_1 = __decorate([
     (0, common_1.Injectable)(),
     __metadata("design:paramtypes", [prisma_service_1.PrismaService,
-        coupons_service_1.CouponsService])
+        coupons_service_1.CouponsService,
+        notifications_service_1.NotificationsService])
 ], PaymentsService);
 //# sourceMappingURL=payments.service.js.map

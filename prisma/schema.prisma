@@ -389,7 +389,7 @@ model Booking {
   start       DateTime
   end         DateTime
 
-  status String @default("confirmed")
+  status String @default("pending")
 
   amountAtBooking     Float
   poojaNameAtBooking  String
@@ -438,6 +438,12 @@ model StaticPage {
   @@map("staticpage")
 }
 
+enum DonationStatus {
+  PENDING
+  COMPLETED
+  FAILED
+}
+
 model DonationItem {
   id     Int    @id @default(autoincrement())
   name   String
@@ -463,6 +469,8 @@ model DonationRecord {
   // 🔹 Snapshot fields
   itemNameAtDonation String
   amountAtDonation   Float
+
+  status          DonationStatus  @default(PENDING)
 
   createdAt DateTime @default(now())
 

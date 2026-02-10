@@ -133,7 +133,7 @@ export class NotificationsService {
   // BOOKINGS (Poojas)
   // ─────────────────────────────────────────────
 
-  async sendBookingCreated(bookingId: number) {
+  async sendBookingConfirmed(bookingId: number) {
     const booking = await this.prisma.booking.findUnique({
       where: { id: bookingId },
       include: {

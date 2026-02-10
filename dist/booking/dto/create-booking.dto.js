@@ -41,6 +41,11 @@ __decorate([
 ], CreateBookingDto.prototype, "end", void 0);
 __decorate([
     (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsIn)(['TEMPLE', 'CUSTOM']),
+    __metadata("design:type", String)
+], CreateBookingDto.prototype, "venueType", void 0);
+__decorate([
+    (0, class_validator_1.IsOptional)(),
     (0, class_validator_1.IsString)(),
     __metadata("design:type", String)
 ], CreateBookingDto.prototype, "userName", void 0);

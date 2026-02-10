@@ -37,6 +37,11 @@ __decorate([
 ], UpdateBookingDto.prototype, "bookingDate", void 0);
 __decorate([
     (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsIn)(['TEMPLE', 'CUSTOM']),
+    __metadata("design:type", String)
+], UpdateBookingDto.prototype, "venueType", void 0);
+__decorate([
+    (0, class_validator_1.IsOptional)(),
     (0, class_validator_1.IsDateString)(),
     __metadata("design:type", String)
 ], UpdateBookingDto.prototype, "start", void 0);

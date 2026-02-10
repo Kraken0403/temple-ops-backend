@@ -9,7 +9,7 @@ export function paypalClient() {
   }
 
   const environment =
-    process.env.PAYPAL_ENV === 'production'
+    process.env.PAYPAL_ENV === 'live'
       ? new paypal.core.LiveEnvironment(clientId, clientSecret)
       : new paypal.core.SandboxEnvironment(clientId, clientSecret)
 

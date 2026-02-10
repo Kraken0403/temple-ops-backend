@@ -13,28 +13,26 @@ exports.DonationRecordService = void 0;
 // src/donations/donation-record.service.ts
 const common_1 = require("@nestjs/common");
 const prisma_service_1 = require("../prisma.service");
-const notifications_service_1 = require("../notifications/notifications.service");
 let DonationRecordService = class DonationRecordService {
-    constructor(prisma, notifications) {
+    constructor(prisma) {
         this.prisma = prisma;
-        this.notifications = notifications;
     }
     async create(dto) {
         const item = await this.ensureItem(dto.donationItemId);
-        const donation = await this.prisma.donationRecord.create({
+        return this.prisma.donationRecord.create({
             data: {
                 donationItemId: dto.donationItemId,
                 donorName: dto.donorName,
                 donorEmail: dto.donorEmail,
                 donorPhone: dto.donorPhone,
-                amountAtDonation: item.amount, // snapshot
-                itemNameAtDonation: item.name, // snapshot
+                // snapshots
+                amountAtDonation: item.amount,
+                itemNameAtDonation: item.name,
+                // 🔑 IMPORTANT
+                status: 'PENDING',
             },
             include: { donationItem: true },
         });
-        // 👇 send email notification
-        await this.notifications.sendDonationReceived(donation.id);
-        return donation;
     }
     findAll() {
         return this.prisma.donationRecord.findMany({
@@ -87,7 +85,6 @@ let DonationRecordService = class DonationRecordService {
 exports.DonationRecordService = DonationRecordService;
 exports.DonationRecordService = DonationRecordService = __decorate([
     (0, common_1.Injectable)(),
-    __metadata("design:paramtypes", [prisma_service_1.PrismaService,
-        notifications_service_1.NotificationsService])
+    __metadata("design:paramtypes", [prisma_service_1.PrismaService])
 ], DonationRecordService);
 //# sourceMappingURL=donation-record.service.js.map

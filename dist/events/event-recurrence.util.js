@@ -6,6 +6,11 @@ function generateOccurrences(params) {
     const { recurrenceType, recurrenceDays, startDate, endDate } = params;
     const dates = [];
     let cursor = luxon_1.DateTime.fromJSDate(startDate).startOf('day');
+    if (recurrenceType === 'CUSTOM' && recurrenceDays?.length) {
+        while (!recurrenceDays.includes(cursor.weekday % 7)) {
+            cursor = cursor.plus({ days: 1 });
+        }
+    }
     const until = endDate
         ? luxon_1.DateTime.fromJSDate(endDate).endOf('day')
         : cursor.endOf('day');
@@ -31,9 +36,11 @@ function generateOccurrences(params) {
         case 'CUSTOM': {
             if (!recurrenceDays?.length)
                 return [];
+            // Snap cursor to first valid weekday
+            while (!recurrenceDays.includes(cursor.weekday % 7)) {
+                cursor = cursor.plus({ days: 1 });
+            }
             while (cursor <= until) {
-                // Luxon: weekday = 1 (Mon) ... 7 (Sun)
-                // Normalize to 0 (Sun) ... 6 (Sat)
                 const normalizedDay = cursor.weekday % 7;
                 if (recurrenceDays.includes(normalizedDay)) {
                     dates.push(cursor.toJSDate());

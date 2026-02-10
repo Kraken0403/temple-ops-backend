@@ -120,7 +120,7 @@ let NotificationsService = NotificationsService_1 = class NotificationsService {
     // ─────────────────────────────────────────────
     // BOOKINGS (Poojas)
     // ─────────────────────────────────────────────
-    async sendBookingCreated(bookingId) {
+    async sendBookingConfirmed(bookingId) {
         const booking = await this.prisma.booking.findUnique({
             where: { id: bookingId },
             include: {

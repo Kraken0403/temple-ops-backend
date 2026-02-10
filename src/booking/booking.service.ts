@@ -251,6 +251,7 @@ export class BookingService {
         bookingDate,
         start,
         end,
+        status: 'pending',
     
         // 🔥 REQUIRED SNAPSHOT
         venueType: dto.venueType!, // TEMPLE | CUSTOM
@@ -287,16 +288,16 @@ export class BookingService {
     })
     
 
-    if (dto.couponCode && pricing.discount > 0) {
-      await this.coupons.recordRedemption({
-        couponCode: dto.couponCode.trim(),
-        amountApplied: pricing.discount,
-        userId: dto.userId ?? null,
-        target: { type: 'pooja', poojaBookingId: created.id },
-      })
-    }
+    // if (dto.couponCode && pricing.discount > 0) {
+    //   await this.coupons.recordRedemption({
+    //     couponCode: dto.couponCode.trim(),
+    //     amountApplied: pricing.discount,
+    //     userId: dto.userId ?? null,
+    //     target: { type: 'pooja', poojaBookingId: created.id },
+    //   })
+    // }
 
-    await this.notifications.sendBookingCreated(created.id)
+    // await this.notifications.sendBookingCreated(created.id)
 
     return {
       ...created,
